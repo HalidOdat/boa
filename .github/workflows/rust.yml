@@ -43,7 +43,7 @@ jobs:
       name: Check on Windows
       runs-on: windows-latest
       steps:
-        - uses: numworks/setup-msys2@v1
+        - uses: microsoft/setup-msbuild@v1.0.0
         - uses: actions/checkout@v2
         - uses: actions-rs/toolchain@v1
           with:
@@ -89,7 +89,7 @@ jobs:
     name: Test Suite on Windows
     runs-on: windows-latest
     steps:
-      - uses: numworks/setup-msys2@v1
+      - uses: microsoft/setup-msbuild@v1.0.0
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
