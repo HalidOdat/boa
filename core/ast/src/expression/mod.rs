@@ -35,7 +35,7 @@ mod r#yield;
 
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 pub use call::{Call, ImportCall, SuperCall};
-pub use identifier::{Identifier, RESERVED_IDENTIFIERS_STRICT};
+pub use identifier::{Identifier, IdentifierScope, RESERVED_IDENTIFIERS_STRICT};
 pub use new::New;
 pub use optional::{Optional, OptionalOperation, OptionalOperationKind};
 pub use parenthesized::Parenthesized;

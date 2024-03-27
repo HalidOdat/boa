@@ -28,6 +28,9 @@ use core::ops::ControlFlow;
 pub struct Block {
     #[cfg_attr(feature = "serde", serde(flatten))]
     statements: StatementList,
+
+    /// Scope index
+    pub scope: Option<u32>,
 }
 
 impl Block {
@@ -36,6 +39,12 @@ impl Block {
     #[must_use]
     pub const fn statement_list(&self) -> &StatementList {
         &self.statements
+    }
+    /// Gets the list of statements and declarations in this block.
+    #[inline]
+    #[must_use]
+    pub fn statement_list_mut(&mut self) -> &mut StatementList {
+        &mut self.statements
     }
 }
 
@@ -46,6 +55,7 @@ where
     fn from(list: T) -> Self {
         Self {
             statements: list.into(),
+            scope: None,
         }
     }
 }

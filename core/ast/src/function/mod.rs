@@ -64,6 +64,10 @@ pub struct Function {
     parameters: FormalParameterList,
     body: FunctionBody,
     has_binding_identifier: bool,
+
+    /// Scope index
+    pub scope: Option<u32>,
+    pub binding_scope: Option<u32>,
 }
 
 impl Function {
@@ -80,6 +84,8 @@ impl Function {
             parameters,
             body,
             has_binding_identifier: false,
+            scope: None,
+            binding_scope: None,
         }
     }
 
@@ -97,6 +103,8 @@ impl Function {
             parameters,
             body,
             has_binding_identifier,
+            scope: None,
+            binding_scope: None,
         }
     }
 
@@ -107,6 +115,13 @@ impl Function {
         self.name
     }
 
+    /// Gets the name of the function declaration.
+    #[inline]
+    #[must_use]
+    pub fn name_mut(&mut self) -> Option<&mut Identifier> {
+        self.name.as_mut()
+    }
+
     /// Gets the list of parameters of the function declaration.
     #[inline]
     #[must_use]
@@ -114,11 +129,25 @@ impl Function {
         &self.parameters
     }
 
+    /// Gets the list of parameters of the function declaration.
+    #[inline]
+    #[must_use]
+    pub fn parameters_mut(&mut self) -> &mut FormalParameterList {
+        &mut self.parameters
+    }
+
     /// Gets the body of the function declaration.
     #[inline]
     #[must_use]
     pub const fn body(&self) -> &FunctionBody {
         &self.body
+    }
+
+    /// Gets the body of the function declaration.
+    #[inline]
+    #[must_use]
+    pub fn body_mut(&mut self) -> &mut FunctionBody {
+        &mut self.body
     }
 
     /// Returns whether the function expression has a binding identifier.

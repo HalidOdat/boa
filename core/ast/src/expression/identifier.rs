@@ -6,6 +6,7 @@ use crate::{
 };
 use boa_interner::{Interner, Sym, ToInternedString};
 use core::ops::ControlFlow;
+use std::hash::Hash;
 
 use super::Expression;
 
@@ -21,6 +22,15 @@ pub const RESERVED_IDENTIFIERS_STRICT: [Sym; 9] = [
     Sym::STATIC,
     Sym::YIELD,
 ];
+
+/// TODO: doc
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdentifierScope {
+    /// TODO: doc
+    Index(u32),
+    /// Cannot be local scope optimized.
+    Dynamic,
+}
 
 /// An `identifier` is a sequence of characters in the code that identifies a variable,
 /// function, or property.
@@ -44,10 +54,27 @@ pub const RESERVED_IDENTIFIERS_STRICT: [Sym; 9] = [
     serde(transparent)
 )]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Eq)]
 pub struct Identifier {
     ident: Sym,
+
+    /// TODO: doc
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub scope: Option<IdentifierScope>,
+}
+
+impl PartialEq for Identifier {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident
+    }
+}
+
+impl Hash for Identifier {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.ident.hash(state);
+    }
 }
 
 impl PartialEq<Sym> for Identifier {
@@ -69,7 +96,7 @@ impl Identifier {
     #[inline]
     #[must_use]
     pub const fn new(ident: Sym) -> Self {
-        Self { ident }
+        Self { ident, scope: None }
     }
 
     /// Retrieves the identifier's string symbol in the interner.
@@ -94,7 +121,10 @@ impl ToInternedString for Identifier {
 impl From<Sym> for Identifier {
     #[inline]
     fn from(sym: Sym) -> Self {
-        Self { ident: sym }
+        Self {
+            ident: sym,
+            scope: None,
+        }
     }
 }
 

@@ -8,6 +8,7 @@ mod expression;
 mod function;
 mod jump_control;
 mod module;
+pub mod scope_analyzer;
 mod statement;
 mod utils;
 
@@ -41,6 +42,7 @@ use boa_ast::{
 use boa_gc::Gc;
 use boa_interner::{Interner, Sym};
 use rustc_hash::FxHashMap;
+use scope_analyzer::ScopeAnalyzer;
 use thin_vec::ThinVec;
 
 pub(crate) use declarations::{
@@ -314,6 +316,8 @@ pub struct ByteCompiler<'ctx> {
 
     #[cfg(feature = "annex-b")]
     pub(crate) annex_b_function_names: Vec<Identifier>,
+
+    pub(crate) scope_analyzer: ScopeAnalyzer,
 }
 
 impl<'ctx> ByteCompiler<'ctx> {
@@ -331,6 +335,7 @@ impl<'ctx> ByteCompiler<'ctx> {
         lexical_environment: Rc<CompileTimeEnvironment>,
         interner: &'ctx mut Interner,
         in_with: bool,
+        scope_analyzer: ScopeAnalyzer,
     ) -> ByteCompiler<'ctx> {
         let mut code_block_flags = CodeBlockFlags::empty();
         code_block_flags.set(CodeBlockFlags::STRICT, strict);
@@ -365,6 +370,8 @@ impl<'ctx> ByteCompiler<'ctx> {
             annex_b_function_names: Vec::new(),
             in_with,
             emitted_mapped_arguments_object_opcode: false,
+
+            scope_analyzer,
         }
     }
 

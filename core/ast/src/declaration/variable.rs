@@ -188,6 +188,12 @@ impl AsRef<[Variable]> for VariableList {
     }
 }
 
+impl AsMut<[Variable]> for VariableList {
+    fn as_mut(&mut self) -> &mut [Variable] {
+        &mut self.list
+    }
+}
+
 impl ToInternedString for VariableList {
     fn to_interned_string(&self, interner: &Interner) -> String {
         join_nodes(interner, self.list.as_ref())
@@ -298,12 +304,23 @@ impl Variable {
     pub const fn binding(&self) -> &Binding {
         &self.binding
     }
+    /// Gets the variable declaration binding.
+    #[must_use]
+    pub fn binding_mut(&mut self) -> &mut Binding {
+        &mut self.binding
+    }
 
     /// Gets the initialization expression for the variable declaration, if any.
     #[inline]
     #[must_use]
     pub const fn init(&self) -> Option<&Expression> {
         self.init.as_ref()
+    }
+    /// Gets the initialization expression for the variable declaration, if any.
+    #[inline]
+    #[must_use]
+    pub fn init_mut(&mut self) -> Option<&mut Expression> {
+        self.init.as_mut()
     }
 }
 

@@ -45,12 +45,24 @@ impl Call {
     pub const fn function(&self) -> &Expression {
         &self.function
     }
+    /// Gets the target function of this call expression.
+    #[inline]
+    #[must_use]
+    pub fn function_mut(&mut self) -> &mut Expression {
+        &mut self.function
+    }
 
     /// Retrieves the arguments passed to the function.
     #[inline]
     #[must_use]
     pub const fn args(&self) -> &[Expression] {
         &self.args
+    }
+    /// Retrieves the arguments passed to the function.
+    #[inline]
+    #[must_use]
+    pub fn args_mut(&mut self) -> &mut [Expression] {
+        &mut self.args
     }
 }
 

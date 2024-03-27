@@ -11,6 +11,7 @@ mod helper;
 
 use boa_engine::{
     builtins::promise::PromiseState,
+    bytecompiler::scope_analyzer::scope_analyzer,
     context::ContextBuilder,
     job::{FutureJob, JobQueue, NativeJob},
     js_string,
@@ -204,6 +205,9 @@ where
                 let mut script = parser
                     .parse_script(context.interner_mut())
                     .map_err(|e| format!("Uncaught SyntaxError: {e}"))?;
+
+                let strict = script.strict();
+                let _ = scope_analyzer(&mut script, strict, context.interner_mut());
 
                 if args.optimize {
                     context.optimize_statement_list(script.statements_mut());
