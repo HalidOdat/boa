@@ -1,6 +1,9 @@
 use crate::Trace;
 
-use super::{vtable_of, DropFn, GcHeader, RunFinalizerFn, TraceFn, TraceNonRootsFn, VTable};
+use super::{
+    vtable::VTableData, vtable_of, DropFn, GcHeader, RunFinalizerFn, TraceFn, TraceNonRootsFn,
+    VTable,
+};
 
 /// A garbage collected allocation.
 #[derive(Debug)]
@@ -11,10 +14,22 @@ pub struct GcBox<T: Trace + ?Sized + 'static> {
     value: T,
 }
 
+impl<T: Trace + VTableData> GcBox<T> {
+    /// Returns a new `GcBox` with a rooted `GcBoxHeader`.
+    pub(crate) fn new<D: VTableData + 'static>(value: T) -> Self {
+        let vtable = vtable_of::<T, D>();
+        Self {
+            header: GcHeader::new(),
+            vtable,
+            value,
+        }
+    }
+}
+
 impl<T: Trace> GcBox<T> {
     /// Returns a new `GcBox` with a rooted `GcBoxHeader`.
-    pub(crate) fn new(value: T) -> Self {
-        let vtable = vtable_of::<T>();
+    pub(crate) fn new<D: VTableData + 'static>(value: T) -> Self {
+        let vtable = vtable_of::<T, D>();
         Self {
             header: GcHeader::new(),
             vtable,
@@ -81,5 +96,9 @@ impl<T: Trace + ?Sized> GcBox<T> {
 
     pub(crate) fn size(&self) -> usize {
         self.vtable.size()
+    }
+
+    pub(crate) fn custom_data(&self) -> *const () {
+        self.vtable.custom_data()
     }
 }

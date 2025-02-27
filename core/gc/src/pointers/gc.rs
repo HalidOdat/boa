@@ -1,6 +1,6 @@
 use crate::{
     finalizer_safe,
-    internals::{EphemeronBox, GcBox},
+    internals::{EphemeronBox, GcBox, VTableData},
     trace::{Finalize, Trace},
     Allocator, Ephemeron, GcErasedPointer, Tracer, WeakGc,
 };
@@ -65,12 +65,34 @@ impl<T: Trace + ?Sized> Gc<T> {
         // Create GcBox and allocate it to heap.
         //
         // Note: Allocator can cause Collector to run
-        let inner_ptr = Allocator::alloc_gc(GcBox::new(value));
+        let inner_ptr = Allocator::alloc_gc(GcBox::new::<()>(value));
 
         Self {
             inner_ptr,
             marker: PhantomData,
         }
+    }
+
+    /// Constructs a new `Gc<T>` with the given value.
+    #[must_use]
+    pub fn new_with_custom_vtable_data<D: VTableData + 'static>(value: T) -> Self
+    where
+        T: Sized,
+    {
+        // Create GcBox and allocate it to heap.
+        //
+        // Note: Allocator can cause Collector to run
+        let inner_ptr = Allocator::alloc_gc(GcBox::new::<D>(value));
+
+        Self {
+            inner_ptr,
+            marker: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn vtable_custom_data(&self) -> *const () {
+        self.inner().custom_data()
     }
 
     /// Constructs a new `Gc<T>` while giving you a `WeakGc<T>` to the allocation, to allow

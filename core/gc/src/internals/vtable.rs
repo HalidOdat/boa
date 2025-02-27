@@ -1,9 +1,22 @@
+use std::marker::PhantomData;
+
 use crate::{GcBox, GcErasedPointer, Trace, Tracer};
 
+pub trait VTableData {
+    type Type: 'static;
+    const DATA: &'static Self::Type;
+}
+
+impl VTableData for () {
+    type Type = u32;
+    const DATA: &'static Self::Type = &10;
+}
+
 // Workaround: https://users.rust-lang.org/t/custom-vtables-with-integers/78508
-pub(crate) const fn vtable_of<T: Trace + 'static>() -> &'static VTable {
+pub(crate) const fn vtable_of<T: Trace + 'static, D: VTableData + 'static>() -> &'static VTable<()>
+{
     trait HasVTable: Trace + Sized + 'static {
-        const VTABLE: &'static VTable;
+        const VTABLE: VTable<()>;
 
         unsafe fn trace_fn(this: GcErasedPointer, tracer: &mut Tracer) {
             // SAFETY: The caller must ensure that the passed erased pointer is `GcBox<Self>`.
@@ -43,16 +56,41 @@ pub(crate) const fn vtable_of<T: Trace + 'static>() -> &'static VTable {
     }
 
     impl<T: Trace + 'static> HasVTable for T {
-        const VTABLE: &'static VTable = &VTable {
+        const VTABLE: VTable<()> = VTable {
             trace_fn: T::trace_fn,
             trace_non_roots_fn: T::trace_non_roots_fn,
             run_finalizer_fn: T::run_finalizer_fn,
             drop_fn: T::drop_fn,
             size: size_of::<GcBox<T>>(),
+            custom_data: (),
         };
     }
 
-    T::VTABLE
+    struct Data<T: HasVTable, D: VTableData> {
+        _marker1: PhantomData<T>,
+        _marker2: PhantomData<D>,
+    }
+
+    trait VTableDataTrait<T: VTableData> {
+        const VTABLE_WITH_DATA: &'static VTable<&'static T::Type>;
+    }
+
+    impl<T: HasVTable, U: VTableData> VTableDataTrait<U> for Data<T, U> {
+        const VTABLE_WITH_DATA: &'static VTable<&'static U::Type> = &VTable {
+            trace_fn: T::VTABLE.trace_fn,
+            trace_non_roots_fn: T::VTABLE.trace_non_roots_fn,
+            run_finalizer_fn: T::VTABLE.run_finalizer_fn,
+            drop_fn: T::VTABLE.drop_fn,
+            size: size_of::<GcBox<T>>(),
+            custom_data: U::DATA,
+        };
+    }
+
+    unsafe {
+        std::mem::transmute_copy::<_, &'static VTable<()>>(
+            <Data<T, D> as VTableDataTrait<D>>::VTABLE_WITH_DATA,
+        )
+    }
 }
 
 pub(crate) type TraceFn = unsafe fn(this: GcErasedPointer, tracer: &mut Tracer);
@@ -61,15 +99,17 @@ pub(crate) type RunFinalizerFn = unsafe fn(this: GcErasedPointer);
 pub(crate) type DropFn = unsafe fn(this: GcErasedPointer);
 
 #[derive(Debug)]
-pub(crate) struct VTable {
+#[repr(C)]
+pub(crate) struct VTable<T: 'static = ()> {
     trace_fn: TraceFn,
     trace_non_roots_fn: TraceNonRootsFn,
     run_finalizer_fn: RunFinalizerFn,
     drop_fn: DropFn,
     size: usize,
+    custom_data: T,
 }
 
-impl VTable {
+impl<T: Copy> VTable<T> {
     pub(crate) fn trace_fn(&self) -> TraceFn {
         self.trace_fn
     }
@@ -88,5 +128,9 @@ impl VTable {
 
     pub(crate) fn size(&self) -> usize {
         self.size
+    }
+
+    pub(crate) fn custom_data(&self) -> &T {
+        &self.custom_data
     }
 }

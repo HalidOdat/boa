@@ -10,3 +10,4 @@ pub(crate) use self::weak_map_box::{ErasedWeakMapBox, WeakMapBox};
 pub(crate) use vtable::{vtable_of, DropFn, RunFinalizerFn, TraceFn, TraceNonRootsFn, VTable};
 
 pub use self::gc_box::GcBox;
+pub use self::vtable::VTableData;
