@@ -112,6 +112,20 @@ impl FunctionKind {
     }
 }
 
+struct Sum {
+    value: usize,
+}
+
+impl Drop for Sum {
+    fn drop(&mut self) {
+        println!("Size of bytecode: {}", self.value);
+    }
+}
+
+thread_local! {
+    static SUM: std::cell::RefCell<Sum> = const { std::cell::RefCell::new(Sum { value: 0 }) };
+}
+
 /// Describes the complete specification of a function node.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FunctionSpec<'a> {
@@ -2310,6 +2324,10 @@ impl<'ctx> ByteCompiler<'ctx> {
             vec![false; (max_local_binding_register_index + 1) as usize].into_boxed_slice();
 
         let register_count = self.register_allocator.finish();
+
+        SUM.with_borrow_mut(|sum| {
+            sum.value += self.bytecode.len();
+        });
 
         CodeBlock {
             name: self.function_name,
