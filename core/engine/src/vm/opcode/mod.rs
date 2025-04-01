@@ -192,6 +192,11 @@ pub(crate) struct ByteCode {
     bytecode: Box<[u64]>,
     extended: Box<[u32]>,
 }
+impl ByteCode {
+    pub(crate) fn sizeof(&self) -> usize {
+        self.bytecode.len() * 8 + self.extended.len() * 4 + 8 + 8
+    }
+}
 
 enum VaryingOperandValue {
     U8(u8),
