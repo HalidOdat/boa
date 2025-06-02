@@ -80,6 +80,8 @@ impl Shape {
     /// before the shape will be converted into a [`UniqueShape`]
     ///
     /// NOTE: This only applies to [`SharedShape`].
+    // TODO: set transition limits
+    #[allow(unused)]
     const TRANSITION_COUNT_MAX: u16 = 1024;
 
     /// Returns `true` if it's a shared shape, `false` otherwise.
@@ -108,13 +110,7 @@ impl Shape {
     /// NOTE: This assumes that there is no property with the given key!
     pub(crate) fn insert_property_transition(&self, key: TransitionKey) -> Self {
         match &self.inner {
-            Inner::Shared(shape) => {
-                let shape = shape.insert_property_transition(key);
-                if shape.transition_count() >= Self::TRANSITION_COUNT_MAX {
-                    return shape.to_unique().into();
-                }
-                shape.into()
-            }
+            Inner::Shared(shape) => shape.insert_property_transition(key).into(),
             Inner::Unique(shape) => shape.insert_property_transition(key).into(),
         }
     }
@@ -130,12 +126,7 @@ impl Shape {
         match &self.inner {
             Inner::Shared(shape) => {
                 let change_transition = shape.change_attributes_transition(key);
-                let shape =
-                    if change_transition.shape.transition_count() >= Self::TRANSITION_COUNT_MAX {
-                        change_transition.shape.to_unique().into()
-                    } else {
-                        change_transition.shape.into()
-                    };
+                let shape = change_transition.shape.into();
                 ChangeTransition {
                     shape,
                     action: change_transition.action,
@@ -150,13 +141,7 @@ impl Shape {
     /// NOTE: This assumes that there already is a property with the given key!
     pub(crate) fn remove_property_transition(&self, key: &PropertyKey) -> Self {
         match &self.inner {
-            Inner::Shared(shape) => {
-                let shape = shape.remove_property_transition(key);
-                if shape.transition_count() >= Self::TRANSITION_COUNT_MAX {
-                    return shape.to_unique().into();
-                }
-                shape.into()
-            }
+            Inner::Shared(shape) => shape.remove_property_transition(key).into(),
             Inner::Unique(shape) => shape.remove_property_transition(key).into(),
         }
     }
@@ -164,13 +149,7 @@ impl Shape {
     /// Create a prototype transitions returning the new transitioned [`Shape`].
     pub(crate) fn change_prototype_transition(&self, prototype: JsPrototype) -> Self {
         match &self.inner {
-            Inner::Shared(shape) => {
-                let shape = shape.change_prototype_transition(prototype);
-                if shape.transition_count() >= Self::TRANSITION_COUNT_MAX {
-                    return shape.to_unique().into();
-                }
-                shape.into()
-            }
+            Inner::Shared(shape) => shape.change_prototype_transition(prototype).into(),
             Inner::Unique(shape) => shape.change_prototype_transition(prototype).into(),
         }
     }

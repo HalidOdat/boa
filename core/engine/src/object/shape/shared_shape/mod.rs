@@ -16,7 +16,7 @@ use self::forward_transition::ForwardTransition;
 
 use super::{
     property_table::PropertyTable, slot::SlotAttributes, ChangeTransition, ChangeTransitionAction,
-    Slot, UniqueShape,
+    Slot,
 };
 
 /// Represent a [`SharedShape`] property transition.
@@ -459,17 +459,6 @@ impl SharedShape {
     pub(crate) fn keys(&self) -> Vec<PropertyKey> {
         let property_table = self.property_table().inner().borrow();
         property_table.keys_cloned_n(self.property_count())
-    }
-
-    /// Returns a new [`UniqueShape`] with the properties of the [`SharedShape`].
-    pub(crate) fn to_unique(&self) -> UniqueShape {
-        UniqueShape::new(
-            self.prototype(),
-            self.property_table()
-                .inner()
-                .borrow()
-                .clone_count(self.property_count()),
-        )
     }
 
     /// Return location in memory of the [`SharedShape`].
