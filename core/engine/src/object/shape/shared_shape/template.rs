@@ -112,7 +112,10 @@ impl ObjectTemplate {
         let mut object = Object {
             data,
             extensible: true,
-            properties: PropertyMap::new(self.shape.clone().into(), IndexedProperties::default()),
+            properties: PropertyMap::with_indexed_properties(
+                self.shape.clone(),
+                IndexedProperties::default(),
+            ),
             private_elements: ThinVec::new(),
         };
 
@@ -135,7 +138,10 @@ impl ObjectTemplate {
         let mut object = Object {
             data,
             extensible: true,
-            properties: PropertyMap::new(self.shape.clone().into(), indexed_properties),
+            properties: PropertyMap::with_indexed_properties(
+                self.shape.clone(),
+                indexed_properties,
+            ),
             private_elements: ThinVec::new(),
         };
 

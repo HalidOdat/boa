@@ -30,14 +30,9 @@ fn id(_: &JsValue, args: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
 fn r#type(_: &JsValue, args: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
     let object = get_object(args, 0)?;
     let object = object.borrow();
-    let shape = object.shape();
+    let _shape = object.shape();
 
-    Ok(if shape.is_shared() {
-        js_string!("shared")
-    } else {
-        js_string!("unique")
-    }
-    .into())
+    Ok(js_string!("shared").into())
 }
 
 /// Returns object's shape type.

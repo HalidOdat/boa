@@ -7,7 +7,7 @@ use crate::{
         function::{OrdinaryFunction, ThisMode},
         OrdinaryObject,
     },
-    object::JsObject,
+    object::{shape::shared_shape::WeakSharedShape, JsObject},
     Context, JsBigInt, JsString, JsValue, SpannedSourceText,
 };
 use bitflags::bitflags;
@@ -624,7 +624,10 @@ impl CodeBlock {
                 let ic = &self.ic[u32::from(*ic_index) as usize];
                 format!(
                     "dst:{dst}, receiver:{receiver}, value:{value}, ic:shape:0x{:x}",
-                    ic.shape.borrow().to_addr_usize(),
+                    ic.shape
+                        .borrow()
+                        .as_ref()
+                        .map_or(0, WeakSharedShape::to_addr_usize),
                 )
             }
             Instruction::SetPropertyByName {
@@ -636,7 +639,10 @@ impl CodeBlock {
                 let ic = &self.ic[u32::from(*ic_index) as usize];
                 format!(
                     "object:{object}, receiver:{receiver}, value:{value}, ic:shape:0x{:x}",
-                    ic.shape.borrow().to_addr_usize(),
+                    ic.shape
+                        .borrow()
+                        .as_ref()
+                        .map_or(0, WeakSharedShape::to_addr_usize),
                 )
             }
             Instruction::GetPropertyByValue {

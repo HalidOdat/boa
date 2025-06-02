@@ -5,9 +5,10 @@
 pub use jsobject::{RecursionLimiter, Ref, RefMut};
 pub use operations::IntegrityLevel;
 pub use property_map::*;
+use shape::SharedShape;
 use thin_vec::ThinVec;
 
-use self::{internal_methods::ORDINARY_INTERNAL_METHODS, shape::Shape};
+use self::internal_methods::ORDINARY_INTERNAL_METHODS;
 use crate::{
     builtins::{
         function::{
@@ -186,7 +187,7 @@ pub struct Object<T: ?Sized> {
 impl<T: Default> Default for Object<T> {
     fn default() -> Self {
         Self {
-            properties: PropertyMap::default(),
+            properties: PropertyMap::new(SharedShape::root()),
             extensible: true,
             private_elements: ThinVec::new(),
             data: T::default(),
@@ -233,7 +234,7 @@ pub enum PrivateElement {
 impl<T: ?Sized> Object<T> {
     /// Returns the shape of the object.
     #[must_use]
-    pub const fn shape(&self) -> &Shape {
+    pub const fn shape(&self) -> &SharedShape {
         &self.properties.shape
     }
 
@@ -740,20 +741,20 @@ impl<'ctx> ConstructorBuilder<'ctx> {
     #[inline]
     pub fn new(context: &'ctx mut Context, function: NativeFunction) -> ConstructorBuilder<'ctx> {
         Self {
-            context,
             function,
             constructor_object: Object {
                 data: OrdinaryObject,
-                properties: PropertyMap::default(),
+                properties: PropertyMap::from_root_shape(context.root_shape()),
                 extensible: true,
                 private_elements: ThinVec::new(),
             },
             prototype: Object {
                 data: OrdinaryObject,
-                properties: PropertyMap::default(),
+                properties: PropertyMap::from_root_shape(context.root_shape()),
                 extensible: true,
                 private_elements: ThinVec::new(),
             },
+            context,
             length: 0,
             name: js_string!(),
             callable: true,

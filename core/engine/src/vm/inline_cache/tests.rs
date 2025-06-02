@@ -6,7 +6,7 @@ use crate::{
     js_string,
     object::{
         internal_methods::InternalMethodContext,
-        shape::{slot::SlotAttributes, WeakShape},
+        shape::{shared_shape::WeakSharedShape, slot::SlotAttributes},
         ObjectInitializer,
     },
     property::{Attribute, PropertyDescriptor, PropertyKey},
@@ -331,7 +331,7 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
     let (function, code) = get_codeblock(&function).unwrap();
 
     assert_eq!(code.ic.len(), 1);
-    assert_eq!(code.ic[0].shape.borrow().clone(), WeakShape::None);
+    assert_eq!(code.ic[0].shape.borrow().clone(), None);
 
     let o = ObjectInitializer::new(context)
         .property(js_string!("test"), 0, Attribute::all())
@@ -340,7 +340,10 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
 
     function.call(&JsValue::undefined(), &[o.clone().into()], context)?;
 
-    assert_eq!(code.ic[0].shape.borrow().clone(), WeakShape::from(&o_shape));
+    assert_eq!(
+        code.ic[0].shape.borrow().clone(),
+        Some(WeakSharedShape::from(&o_shape))
+    );
 
     Ok(())
 }
@@ -352,7 +355,7 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
     let (function, code) = get_codeblock(&function).unwrap();
 
     assert_eq!(code.ic.len(), 1);
-    assert_eq!(code.ic[0].shape.borrow().clone(), WeakShape::None);
+    assert_eq!(code.ic[0].shape.borrow().clone(), None);
 
     let o = ObjectInitializer::new(context)
         .property(js_string!("test"), 0, Attribute::all())
@@ -361,7 +364,10 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
 
     function.call(&JsValue::undefined(), &[o.clone().into()], context)?;
 
-    assert_eq!(code.ic[0].shape.borrow().clone(), WeakShape::from(&o_shape));
+    assert_eq!(
+        code.ic[0].shape.borrow().clone(),
+        Some(WeakSharedShape::from(&o_shape))
+    );
 
     Ok(())
 }

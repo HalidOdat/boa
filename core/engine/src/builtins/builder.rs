@@ -376,12 +376,16 @@ impl BuiltInConstructorWithPrototype<'_> {
 
         {
             let mut prototype = self.prototype.borrow_mut();
-            prototype
-                .properties_mut()
-                .shape
-                .as_unique()
-                .expect("The object should have a unique shape")
-                .override_internal(self.prototype_property_table, self.inherits);
+            let property_map = prototype.properties_mut();
+
+            let mut shape = property_map.shape.clone();
+            if shape.prototype() != self.inherits {
+                shape = shape.change_prototype_transition(self.inherits);
+            }
+            for transition_key in self.prototype_property_table.transitions() {
+                shape = shape.insert_property_transition(transition_key);
+            }
+            property_map.shape = shape;
 
             let prototype_old_storage = std::mem::replace(
                 &mut prototype.properties_mut().storage,
@@ -398,12 +402,18 @@ impl BuiltInConstructorWithPrototype<'_> {
         function.f = NativeFunction::from_fn_ptr(self.function);
         function.constructor = Some(ConstructorKind::Base);
         function.realm = Some(self.realm.clone());
-        object
-            .properties_mut()
-            .shape
-            .as_unique()
-            .expect("The object should have a unique shape")
-            .override_internal(self.object_property_table, self.__proto__);
+        {
+            let property_map = object.properties_mut();
+
+            let mut shape = property_map.shape.clone();
+            if shape.prototype() != self.__proto__ {
+                shape = shape.change_prototype_transition(self.__proto__);
+            }
+            for transition_key in self.object_property_table.transitions() {
+                shape = shape.insert_property_transition(transition_key);
+            }
+            property_map.shape = shape;
+        }
 
         let object_old_storage =
             std::mem::replace(&mut object.properties_mut().storage, self.object_storage);
@@ -424,12 +434,19 @@ impl BuiltInConstructorWithPrototype<'_> {
         function.f = NativeFunction::from_fn_ptr(self.function);
         function.constructor = Some(ConstructorKind::Base);
         function.realm = Some(self.realm.clone());
-        object
-            .properties_mut()
-            .shape
-            .as_unique()
-            .expect("The object should have a unique shape")
-            .override_internal(self.object_property_table, self.__proto__);
+
+        {
+            let property_map = object.properties_mut();
+
+            let mut shape = property_map.shape.clone();
+            if shape.prototype() != self.__proto__ {
+                shape = shape.change_prototype_transition(self.__proto__);
+            }
+            for transition_key in self.object_property_table.transitions() {
+                shape = shape.insert_property_transition(transition_key);
+            }
+            property_map.shape = shape;
+        }
 
         let object_old_storage =
             std::mem::replace(&mut object.properties_mut().storage, self.object_storage);

@@ -1,9 +1,8 @@
 use super::{
     shape::{
-        property_table::PropertyTableInner,
         shared_shape::TransitionKey,
         slot::{Slot, SlotAttributes},
-        ChangeTransitionAction, RootShape, Shape, UniqueShape,
+        ChangeTransitionAction, RootShape, SharedShape,
     },
     JsPrototype, ObjectStorage, PropertyDescriptor, PropertyKey,
 };
@@ -363,12 +362,12 @@ impl<'a> IntoIterator for &'a IndexedProperties {
 /// A [`PropertyMap`] contains all the properties of an object.
 ///
 /// The property values are stored in different data structures based on keys.
-#[derive(Default, Debug, Trace, Finalize)]
+#[derive(Debug, Trace, Finalize)]
 pub struct PropertyMap {
     /// Properties stored with integers as keys.
     pub(crate) indexed_properties: IndexedProperties,
 
-    pub(crate) shape: Shape,
+    pub(crate) shape: SharedShape,
     pub(crate) storage: ObjectStorage,
 }
 
@@ -376,21 +375,27 @@ impl PropertyMap {
     /// Create a new [`PropertyMap`].
     #[must_use]
     #[inline]
-    pub fn new(shape: Shape, indexed_properties: IndexedProperties) -> Self {
+    pub fn from_root_shape(root_shape: &RootShape) -> Self {
+        Self::new(root_shape.shape().clone())
+    }
+
+    /// Create a new [`PropertyMap`].
+    #[must_use]
+    #[inline]
+    pub fn new(shape: SharedShape) -> Self {
+        Self::with_indexed_properties(shape, IndexedProperties::default())
+    }
+
+    /// Create a new [`PropertyMap`].
+    #[must_use]
+    #[inline]
+    pub fn with_indexed_properties(
+        shape: SharedShape,
+        indexed_properties: IndexedProperties,
+    ) -> Self {
         Self {
             indexed_properties,
             shape,
-            storage: Vec::default(),
-        }
-    }
-
-    /// Construct a [`PropertyMap`] from with the given prototype with an unique [`Shape`].
-    #[must_use]
-    #[inline]
-    pub fn from_prototype_unique_shape(prototype: JsPrototype) -> Self {
-        Self {
-            indexed_properties: IndexedProperties::default(),
-            shape: UniqueShape::new(prototype, PropertyTableInner::default()).into(),
             storage: Vec::default(),
         }
     }
@@ -405,7 +410,7 @@ impl PropertyMap {
         let shape = root_shape.shape().change_prototype_transition(prototype);
         Self {
             indexed_properties: IndexedProperties::default(),
-            shape: shape.into(),
+            shape,
             storage: Vec::default(),
         }
     }

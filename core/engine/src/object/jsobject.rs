@@ -138,7 +138,10 @@ impl JsObject {
         let gc = Gc::new(VTableObject {
             object: GcRefCell::new(Object {
                 data,
-                properties: PropertyMap::from_prototype_unique_shape(prototype.into()),
+                properties: PropertyMap::from_prototype_with_shared_shape(
+                    &RootShape::default(),
+                    prototype.into(),
+                ),
                 extensible: true,
                 private_elements: ThinVec::new(),
             }),
@@ -606,7 +609,10 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
         let inner = Gc::new(VTableObject {
             object: GcRefCell::new(Object {
                 data,
-                properties: PropertyMap::from_prototype_unique_shape(prototype.into()),
+                properties: PropertyMap::from_prototype_with_shared_shape(
+                    &RootShape::default(),
+                    prototype.into(),
+                ),
                 extensible: true,
                 private_elements: ThinVec::new(),
             }),

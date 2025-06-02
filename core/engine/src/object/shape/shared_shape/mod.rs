@@ -251,10 +251,7 @@ impl SharedShape {
     }
 
     /// Create a [`SharedShape`] change prototype transition, returning [`ChangeTransition`].
-    pub(crate) fn change_attributes_transition(
-        &self,
-        key: TransitionKey,
-    ) -> ChangeTransition<Self> {
+    pub(crate) fn change_attributes_transition(&self, key: TransitionKey) -> ChangeTransition {
         let slot = self.property_table().get_expect(&key.property_key);
 
         // Check if we have already created such a transition, if so use it!
@@ -462,7 +459,9 @@ impl SharedShape {
     }
 
     /// Return location in memory of the [`SharedShape`].
-    pub(crate) fn to_addr_usize(&self) -> usize {
+    #[inline]
+    #[must_use]
+    pub fn to_addr_usize(&self) -> usize {
         let ptr: *const _ = self.inner.as_ref();
         ptr as usize
     }

@@ -5,6 +5,8 @@ use crate::{
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::{cell::RefCell, rc::Rc};
 
+use super::shared_shape::TransitionKey;
+
 /// The internal representation of [`PropertyTable`].
 #[derive(Default, Debug, Clone)]
 pub(crate) struct PropertyTableInner {
@@ -22,8 +24,11 @@ impl PropertyTableInner {
     }
 
     /// Returns all the keys, in insertion order.
-    pub(crate) fn keys(&self) -> Vec<PropertyKey> {
-        self.keys_cloned_n(self.keys.len() as u32)
+    pub(crate) fn transitions(&self) -> impl Iterator<Item = TransitionKey> + use<'_> {
+        self.keys.iter().map(|(property_key, slot)| TransitionKey {
+            property_key: property_key.clone(),
+            attributes: slot.attributes,
+        })
     }
 
     /// Returns `n` cloned keys, in insertion order.
