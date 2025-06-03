@@ -386,7 +386,7 @@ impl BuiltInConstructor for NumberFormat {
         }
         .map_err(|err| JsNativeError::typ().with_message(err.to_string()))?;
 
-        let number_format = JsObject::from_proto_and_data_with_shared_shape(
+        let number_format = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             prototype,
             NumberFormat {

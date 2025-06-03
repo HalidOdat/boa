@@ -128,7 +128,7 @@ pub(super) fn coerce_options_to_object(
     // If options is undefined, then
     if options.is_undefined() {
         // a. Return OrdinaryObjectCreate(null).
-        return Ok(JsObject::from_proto_and_data_with_shared_shape(
+        return Ok(JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             None,
             OrdinaryObject,

@@ -1,28 +1,28 @@
 use boa_macros::{Finalize, Trace};
 
-use super::SharedShape;
+use super::Shape;
 
-/// This is a wrapper around [`SharedShape`] that ensures it's root shape.
+/// This is a wrapper around [`Shape`] that ensures it's root shape.
 ///
-/// Represent the root shape that [`SharedShape`] transitions start from.
+/// Represent the root shape that [`Shape`] transitions start from.
 #[derive(Debug, Clone, Trace, Finalize)]
 pub struct RootShape {
-    shape: SharedShape,
+    shape: Shape,
 }
 
 impl Default for RootShape {
     #[inline]
     fn default() -> Self {
         Self {
-            shape: SharedShape::root(),
+            shape: Shape::root(),
         }
     }
 }
 
 impl RootShape {
-    /// Gets the inner [`SharedShape`].
+    /// Gets the inner [`Shape`].
     #[must_use]
-    pub const fn shape(&self) -> &SharedShape {
+    pub const fn shape(&self) -> &Shape {
         &self.shape
     }
 }

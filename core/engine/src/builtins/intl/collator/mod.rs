@@ -357,7 +357,7 @@ impl BuiltInConstructor for Collator {
 
         let prototype =
             get_prototype_from_constructor(new_target, StandardConstructors::collator, context)?;
-        let collator = JsObject::from_proto_and_data_with_shared_shape(
+        let collator = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             prototype,
             Self {

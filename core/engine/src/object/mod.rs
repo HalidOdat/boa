@@ -5,7 +5,7 @@
 pub use jsobject::{RecursionLimiter, Ref, RefMut};
 pub use operations::IntegrityLevel;
 pub use property_map::*;
-use shape::SharedShape;
+use shape::Shape;
 use thin_vec::ThinVec;
 
 use self::internal_methods::ORDINARY_INTERNAL_METHODS;
@@ -187,7 +187,7 @@ pub struct Object<T: ?Sized> {
 impl<T: Default> Default for Object<T> {
     fn default() -> Self {
         Self {
-            properties: PropertyMap::new(SharedShape::root()),
+            properties: PropertyMap::new(Shape::root()),
             extensible: true,
             private_elements: ThinVec::new(),
             data: T::default(),
@@ -234,7 +234,7 @@ pub enum PrivateElement {
 impl<T: ?Sized> Object<T> {
     /// Returns the shape of the object.
     #[must_use]
-    pub const fn shape(&self) -> &SharedShape {
+    pub const fn shape(&self) -> &Shape {
         &self.properties.shape
     }
 
@@ -623,7 +623,7 @@ impl<'ctx> ObjectInitializer<'ctx> {
 
     /// Create a new `ObjectBuilder` with custom [`NativeObject`] data.
     pub fn with_native_data<T: NativeObject>(data: T, context: &'ctx mut Context) -> Self {
-        let object = JsObject::from_proto_and_data_with_shared_shape(
+        let object = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             context.intrinsics().constructors().object().prototype(),
             data,
@@ -637,8 +637,7 @@ impl<'ctx> ObjectInitializer<'ctx> {
         proto: JsObject,
         context: &'ctx mut Context,
     ) -> Self {
-        let object =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, data);
+        let object = JsObject::from_proto_and_data_with_shape(context.root_shape(), proto, data);
         Self { context, object }
     }
 

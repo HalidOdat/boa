@@ -89,7 +89,7 @@ impl BuiltInConstructor for WeakMap {
         // 3. Set map.[[WeakMapData]] to a new empty List.
         let prototype =
             get_prototype_from_constructor(new_target, StandardConstructors::weak_map, context)?;
-        let map = JsObject::from_proto_and_data_with_shared_shape(
+        let map = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             prototype,
             NativeWeakMap::new(),

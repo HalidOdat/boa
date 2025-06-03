@@ -501,7 +501,7 @@ fn native_function_construct(
                         StandardConstructors::object,
                         context,
                     )?;
-                    Ok(JsObject::from_proto_and_data_with_shared_shape(
+                    Ok(JsObject::from_proto_and_data_with_shape(
                         context.root_shape(),
                         prototype,
                         OrdinaryObject,

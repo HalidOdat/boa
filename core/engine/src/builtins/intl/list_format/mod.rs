@@ -174,7 +174,7 @@ impl BuiltInConstructor for ListFormat {
         // 2. Let listFormat be ? OrdinaryCreateFromConstructor(NewTarget, "%ListFormat.prototype%", « [[InitializedListFormat]], [[Locale]], [[Type]], [[Style]], [[Templates]] »).
         let prototype =
             get_prototype_from_constructor(new_target, StandardConstructors::list_format, context)?;
-        let list_format = JsObject::from_proto_and_data_with_shared_shape(
+        let list_format = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             prototype,
             Self {

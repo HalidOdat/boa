@@ -238,7 +238,7 @@ impl BuiltInConstructor for Set {
         // 3. Set set.[[SetData]] to a new empty List.
         let prototype =
             get_prototype_from_constructor(new_target, StandardConstructors::set, context)?;
-        let set = JsObject::from_proto_and_data_with_shared_shape(
+        let set = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             prototype,
             OrderedSet::default(),
@@ -282,11 +282,7 @@ impl Set {
         let prototype =
             prototype.unwrap_or_else(|| context.intrinsics().constructors().set().prototype());
 
-        JsObject::from_proto_and_data_with_shared_shape(
-            context.root_shape(),
-            prototype,
-            OrderedSet::new(),
-        )
+        JsObject::from_proto_and_data_with_shape(context.root_shape(), prototype, OrderedSet::new())
     }
 
     /// Utility for constructing `Set` objects from an iterator of `JsValue`'s.
@@ -842,7 +838,7 @@ impl Set {
         let Some(result_set) = this
             .as_downcast_ref::<OrderedSet>()
             .map(|set| {
-                JsObject::from_proto_and_data_with_shared_shape(
+                JsObject::from_proto_and_data_with_shape(
                     context.root_shape(),
                     context.intrinsics().constructors().set().prototype(),
                     OrderedSet::clone(&set),
@@ -926,7 +922,7 @@ impl Set {
         let Some(result_set) = this
             .as_downcast_ref::<OrderedSet>()
             .map(|set| {
-                JsObject::from_proto_and_data_with_shared_shape(
+                JsObject::from_proto_and_data_with_shape(
                     context.root_shape(),
                     context.intrinsics().constructors().set().prototype(),
                     OrderedSet::clone(&set),

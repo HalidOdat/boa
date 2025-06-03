@@ -9,25 +9,25 @@ use crate::{
     JsValue,
 };
 
-use super::{SharedShape, TransitionKey};
+use super::{Shape, TransitionKey};
 
 /// Represent a template of an objects properties and prototype.
-/// This is used to construct as many objects  as needed from a predefined [`SharedShape`].
+/// This is used to construct as many objects  as needed from a predefined [`Shape`].
 #[derive(Debug, Clone, Trace, Finalize)]
 pub(crate) struct ObjectTemplate {
-    shape: SharedShape,
+    shape: Shape,
 }
 
 impl ObjectTemplate {
     /// Create a new [`ObjectTemplate`]
-    pub(crate) fn new(shape: &SharedShape) -> Self {
+    pub(crate) fn new(shape: &Shape) -> Self {
         Self {
             shape: shape.clone(),
         }
     }
 
     /// Create and [`ObjectTemplate`] with a prototype.
-    pub(crate) fn with_prototype(shape: &SharedShape, prototype: JsObject) -> Self {
+    pub(crate) fn with_prototype(shape: &Shape, prototype: JsObject) -> Self {
         let shape = shape.change_prototype_transition(Some(prototype));
         Self { shape }
     }
@@ -46,7 +46,7 @@ impl ObjectTemplate {
     }
 
     /// Returns the inner shape of the [`ObjectTemplate`].
-    pub(crate) const fn shape(&self) -> &SharedShape {
+    pub(crate) const fn shape(&self) -> &Shape {
         &self.shape
     }
 

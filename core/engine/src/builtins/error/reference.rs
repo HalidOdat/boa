@@ -83,7 +83,7 @@ impl BuiltInConstructor for ReferenceError {
             StandardConstructors::reference_error,
             context,
         )?;
-        let o = JsObject::from_proto_and_data_with_shared_shape(
+        let o = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             prototype,
             Error::Reference,

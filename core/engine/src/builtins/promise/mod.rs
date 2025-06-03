@@ -415,7 +415,7 @@ impl BuiltInConstructor for Promise {
         let promise =
             get_prototype_from_constructor(new_target, StandardConstructors::promise, context)?;
 
-        let promise = JsObject::from_proto_and_data_with_shared_shape(
+        let promise = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             promise,
             // 4. Set promise.[[PromiseState]] to pending.

@@ -43,7 +43,7 @@ impl Segments {
         // 3. Set segments.[[SegmentsSegmenter]] to segmenter.
         // 4. Set segments.[[SegmentsString]] to string.
         // 5. Return segments.
-        JsObject::from_proto_and_data_with_shared_shape(
+        JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             context.intrinsics().objects().segments_prototype(),
             Self { segmenter, string },

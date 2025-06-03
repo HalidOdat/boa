@@ -7,7 +7,7 @@ use crate::{
         function::{OrdinaryFunction, ThisMode},
         OrdinaryObject,
     },
-    object::{shape::shared_shape::WeakSharedShape, JsObject},
+    object::{shape::shared_shape::WeakShape, JsObject},
     Context, JsBigInt, JsString, JsValue, SpannedSourceText,
 };
 use bitflags::bitflags;
@@ -627,7 +627,7 @@ impl CodeBlock {
                     ic.shape
                         .borrow()
                         .as_ref()
-                        .map_or(0, WeakSharedShape::to_addr_usize),
+                        .map_or(0, WeakShape::to_addr_usize),
                 )
             }
             Instruction::SetPropertyByName {
@@ -642,7 +642,7 @@ impl CodeBlock {
                     ic.shape
                         .borrow()
                         .as_ref()
-                        .map_or(0, WeakSharedShape::to_addr_usize),
+                        .map_or(0, WeakShape::to_addr_usize),
                 )
             }
             Instruction::GetPropertyByValue {
@@ -1027,7 +1027,7 @@ pub(crate) fn create_function_object(
     let templates = context.intrinsics().templates();
 
     let (mut template, storage, constructor_prototype) = if is_generator {
-        let prototype = JsObject::from_proto_and_data_with_shared_shape(
+        let prototype = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             if is_async {
                 context.intrinsics().objects().async_generator()
@@ -1096,7 +1096,7 @@ pub(crate) fn create_function_object_fast(code: Gc<CodeBlock>, context: &mut Con
     );
 
     if is_generator {
-        let prototype = JsObject::from_proto_and_data_with_shared_shape(
+        let prototype = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             if is_async {
                 context.intrinsics().objects().async_generator()

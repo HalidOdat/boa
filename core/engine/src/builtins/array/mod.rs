@@ -369,7 +369,7 @@ impl Array {
         }
 
         let array =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, Array);
+            JsObject::from_proto_and_data_with_shape(context.root_shape(), prototype, Array);
 
         // 6. Perform ! OrdinaryDefineOwnProperty(A, "length", PropertyDescriptor { [[Value]]: 𝔽(length), [[Writable]]: true, [[Enumerable]]: false, [[Configurable]]: false }).
         ordinary_define_own_property(

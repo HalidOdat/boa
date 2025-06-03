@@ -86,7 +86,7 @@ impl ArrayIterator {
         kind: PropertyNameKind,
         context: &Context,
     ) -> JsValue {
-        let array_iterator = JsObject::from_proto_and_data_with_shared_shape(
+        let array_iterator = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             context.intrinsics().objects().iterator_prototypes().array(),
             Self::new(array, kind),

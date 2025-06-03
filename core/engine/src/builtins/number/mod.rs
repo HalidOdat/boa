@@ -129,8 +129,7 @@ impl BuiltInConstructor for Number {
         }
         let prototype =
             get_prototype_from_constructor(new_target, StandardConstructors::number, context)?;
-        let this =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, data);
+        let this = JsObject::from_proto_and_data_with_shape(context.root_shape(), prototype, data);
         Ok(this.into())
     }
 }

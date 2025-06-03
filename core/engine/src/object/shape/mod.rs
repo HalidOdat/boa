@@ -6,7 +6,7 @@ pub(crate) mod shared_shape;
 pub(crate) mod slot;
 
 pub use root_shape::RootShape;
-pub use shared_shape::SharedShape;
+pub use shared_shape::Shape;
 
 use self::slot::Slot;
 
@@ -35,7 +35,7 @@ pub(crate) enum ChangeTransitionAction {
 /// The result of a change property attribute transition.
 pub(crate) struct ChangeTransition {
     /// The shape after transition.
-    pub(crate) shape: SharedShape,
+    pub(crate) shape: Shape,
 
     /// The needed action to be performed after transition to the object storage.
     pub(crate) action: ChangeTransitionAction,

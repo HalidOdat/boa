@@ -4,7 +4,7 @@ use boa_gc::GcRefCell;
 use boa_macros::{Finalize, Trace};
 
 use crate::{
-    object::shape::{shared_shape::WeakSharedShape, slot::Slot, SharedShape},
+    object::shape::{shared_shape::WeakShape, slot::Slot, Shape},
     JsString,
 };
 
@@ -18,7 +18,7 @@ pub(crate) struct InlineCache {
     pub(crate) name: JsString,
 
     /// A pointer is kept to the shape to avoid the shape from being deallocated.
-    pub(crate) shape: GcRefCell<Option<WeakSharedShape>>,
+    pub(crate) shape: GcRefCell<Option<WeakShape>>,
 
     /// The [`Slot`] of the property.
     #[unsafe_ignore_trace]
@@ -34,8 +34,8 @@ impl InlineCache {
         }
     }
 
-    pub(crate) fn set(&self, shape: &SharedShape, slot: Slot) {
-        *self.shape.borrow_mut() = Some(WeakSharedShape::from(shape));
+    pub(crate) fn set(&self, shape: &Shape, slot: Slot) {
+        *self.shape.borrow_mut() = Some(WeakShape::from(shape));
         self.slot.set(slot);
     }
 
@@ -47,11 +47,11 @@ impl InlineCache {
     ///
     /// Otherwise we reset the internal weak reference to [`WeakShape::None`],
     /// so it can be deallocated by the GC.
-    pub(crate) fn match_or_reset(&self, shape: &SharedShape) -> Option<(SharedShape, Slot)> {
+    pub(crate) fn match_or_reset(&self, shape: &Shape) -> Option<(Shape, Slot)> {
         let mut old = self.shape.borrow_mut();
 
         let old_upgraded = old.clone().and_then(|old| old.upgrade());
-        if old_upgraded.as_ref().map_or(0, SharedShape::to_addr_usize) == shape.to_addr_usize() {
+        if old_upgraded.as_ref().map_or(0, Shape::to_addr_usize) == shape.to_addr_usize() {
             return old_upgraded.map(|shape| (shape, self.slot()));
         }
 

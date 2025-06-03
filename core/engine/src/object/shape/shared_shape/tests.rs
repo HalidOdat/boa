@@ -1,10 +1,10 @@
 use crate::{object::shape::slot::SlotAttributes, property::PropertyKey, JsObject, JsSymbol};
 
-use super::{SharedShape, TransitionKey};
+use super::{Shape, TransitionKey};
 
 #[test]
 fn test_prune_property_on_counter_limit() {
-    let shape = SharedShape::root();
+    let shape = Shape::root();
 
     for i in 0..255 {
         assert_eq!(
@@ -59,7 +59,7 @@ fn test_prune_property_on_counter_limit() {
 
 #[test]
 fn test_prune_prototype_on_counter_limit() {
-    let shape = SharedShape::root();
+    let shape = Shape::root();
 
     assert_eq!(
         shape.forward_transitions().prototype_transitions_count(),

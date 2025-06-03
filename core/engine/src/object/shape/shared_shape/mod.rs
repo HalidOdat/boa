@@ -19,7 +19,7 @@ use super::{
     Slot,
 };
 
-/// Represent a [`SharedShape`] property transition.
+/// Represent a [`Shape`] property transition.
 #[derive(Debug, Finalize, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct TransitionKey {
     pub(crate) property_key: PropertyKey,
@@ -44,7 +44,7 @@ bitflags! {
     /// Flags of a shape.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Finalize)]
     pub struct ShapeFlags: u8 {
-        /// Represents the transition type of a [`SharedShape`].
+        /// Represents the transition type of a [`Shape`].
         const TRANSITION_TYPE = 0b0000_0011;
     }
 }
@@ -84,13 +84,13 @@ unsafe impl Trace for ShapeFlags {
     empty_trace!();
 }
 
-/// The internal representation of a [`SharedShape`].
+/// The internal representation of a [`Shape`].
 #[derive(Debug, Trace, Finalize)]
 struct Inner {
     /// See [`ForwardTransition`].
     forward_transitions: ForwardTransition,
 
-    /// The count of how many properties this [`SharedShape`] holds.
+    /// The count of how many properties this [`Shape`] holds.
     property_count: u32,
 
     /// Instance prototype `__proto__`.
@@ -104,7 +104,7 @@ struct Inner {
     /// The previous shape in the transition chain.
     ///
     /// [`None`] if it is the root shape.
-    previous: Option<SharedShape>,
+    previous: Option<Shape>,
 
     /// How many transitions have happened from the root node.
     transition_count: u16,
@@ -115,11 +115,11 @@ struct Inner {
 
 /// Represents a shared object shape.
 #[derive(Debug, Trace, Finalize, Clone)]
-pub struct SharedShape {
+pub struct Shape {
     inner: Gc<Inner>,
 }
 
-impl SharedShape {
+impl Shape {
     fn property_table(&self) -> &PropertyTable {
         &self.inner.property_table
     }
@@ -146,7 +146,7 @@ impl SharedShape {
     pub fn prototype(&self) -> JsPrototype {
         self.inner.prototype.clone()
     }
-    /// Get the property this [`SharedShape`] refers to.
+    /// Get the property this [`Shape`] refers to.
     pub(crate) fn property(&self) -> (PropertyKey, Slot) {
         let inner = self.property_table().inner().borrow();
         let (key, slot) = inner
@@ -169,14 +169,14 @@ impl SharedShape {
         self.inner.prototype.as_ref() == Some(prototype)
     }
 
-    /// Create a new [`SharedShape`].
+    /// Create a new [`Shape`].
     fn new(inner: Inner) -> Self {
         Self {
             inner: Gc::new(inner),
         }
     }
 
-    /// Create a root [`SharedShape`].
+    /// Create a root [`Shape`].
     #[must_use]
     pub(crate) fn root() -> Self {
         Self::new(Inner {
@@ -191,7 +191,7 @@ impl SharedShape {
         })
     }
 
-    /// Create a [`SharedShape`] change prototype transition.
+    /// Create a [`Shape`] change prototype transition.
     pub(crate) fn change_prototype_transition(&self, prototype: JsPrototype) -> Self {
         if let Some(shape) = self.forward_transitions().get_prototype(&prototype) {
             if let Some(inner) = shape.upgrade() {
@@ -217,7 +217,7 @@ impl SharedShape {
         new_shape
     }
 
-    /// Create a [`SharedShape`] insert property transition.
+    /// Create a [`Shape`] insert property transition.
     pub(crate) fn insert_property_transition(&self, key: TransitionKey) -> Self {
         // Check if we have already created such a transition, if so use it!
         if let Some(shape) = self.forward_transitions().get_property(&key) {
@@ -250,7 +250,7 @@ impl SharedShape {
         new_shape
     }
 
-    /// Create a [`SharedShape`] change prototype transition, returning [`ChangeTransition`].
+    /// Create a [`Shape`] change prototype transition, returning [`ChangeTransition`].
     pub(crate) fn change_attributes_transition(&self, key: TransitionKey) -> ChangeTransition {
         let slot = self.property_table().get_expect(&key.property_key);
 
@@ -415,7 +415,7 @@ impl SharedShape {
         (base, prototype, transitions)
     }
 
-    /// Remove a property from [`SharedShape`], returning the new [`SharedShape`].
+    /// Remove a property from [`Shape`], returning the new [`Shape`].
     pub(crate) fn remove_property_transition(&self, key: &PropertyKey) -> Self {
         let (mut base, prototype, transitions) = self.rollback_before(key);
 
@@ -458,7 +458,7 @@ impl SharedShape {
         property_table.keys_cloned_n(self.property_count())
     }
 
-    /// Return location in memory of the [`SharedShape`].
+    /// Return location in memory of the [`Shape`].
     #[inline]
     #[must_use]
     pub fn to_addr_usize(&self) -> usize {
@@ -467,16 +467,16 @@ impl SharedShape {
     }
 }
 
-/// Represents a weak reference to [`SharedShape`].
+/// Represents a weak reference to [`Shape`].
 #[derive(Debug, Trace, Finalize, Clone, PartialEq)]
-pub(crate) struct WeakSharedShape {
+pub(crate) struct WeakShape {
     inner: WeakGc<Inner>,
 }
 
-impl WeakSharedShape {
-    /// Return location in memory of the [`WeakSharedShape`].
+impl WeakShape {
+    /// Return location in memory of the [`WeakShape`].
     ///
-    /// Returns `0` if the inner [`SharedShape`] has been freed.
+    /// Returns `0` if the inner [`Shape`] has been freed.
     #[inline]
     #[must_use]
     pub(crate) fn to_addr_usize(&self) -> usize {
@@ -486,20 +486,20 @@ impl WeakSharedShape {
         })
     }
 
-    /// Upgrade returns a [`SharedShape`] pointer for the internal value if the pointer is still live,
+    /// Upgrade returns a [`Shape`] pointer for the internal value if the pointer is still live,
     /// or [`None`] if the value was already garbage collected.
     #[inline]
     #[must_use]
-    pub(crate) fn upgrade(&self) -> Option<SharedShape> {
-        Some(SharedShape {
+    pub(crate) fn upgrade(&self) -> Option<Shape> {
+        Some(Shape {
             inner: self.inner.upgrade()?,
         })
     }
 }
 
-impl From<&SharedShape> for WeakSharedShape {
-    fn from(value: &SharedShape) -> Self {
-        WeakSharedShape {
+impl From<&Shape> for WeakShape {
+    fn from(value: &Shape) -> Self {
+        WeakShape {
             inner: WeakGc::new(&value.inner),
         }
     }

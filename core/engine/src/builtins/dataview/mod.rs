@@ -287,7 +287,7 @@ impl BuiltInConstructor for DataView {
             }
         }
 
-        let obj = JsObject::from_proto_and_data_with_shared_shape(
+        let obj = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             prototype,
             Self {

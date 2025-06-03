@@ -2,7 +2,7 @@ use super::{
     shape::{
         shared_shape::TransitionKey,
         slot::{Slot, SlotAttributes},
-        ChangeTransitionAction, RootShape, SharedShape,
+        ChangeTransitionAction, RootShape, Shape,
     },
     JsPrototype, ObjectStorage, PropertyDescriptor, PropertyKey,
 };
@@ -367,7 +367,7 @@ pub struct PropertyMap {
     /// Properties stored with integers as keys.
     pub(crate) indexed_properties: IndexedProperties,
 
-    pub(crate) shape: SharedShape,
+    pub(crate) shape: Shape,
     pub(crate) storage: ObjectStorage,
 }
 
@@ -382,17 +382,14 @@ impl PropertyMap {
     /// Create a new [`PropertyMap`].
     #[must_use]
     #[inline]
-    pub fn new(shape: SharedShape) -> Self {
+    pub fn new(shape: Shape) -> Self {
         Self::with_indexed_properties(shape, IndexedProperties::default())
     }
 
     /// Create a new [`PropertyMap`].
     #[must_use]
     #[inline]
-    pub fn with_indexed_properties(
-        shape: SharedShape,
-        indexed_properties: IndexedProperties,
-    ) -> Self {
+    pub fn with_indexed_properties(shape: Shape, indexed_properties: IndexedProperties) -> Self {
         Self {
             indexed_properties,
             shape,
@@ -403,10 +400,7 @@ impl PropertyMap {
     /// Construct a [`PropertyMap`] from with the given prototype with a shared shape [`Shape`].
     #[must_use]
     #[inline]
-    pub fn from_prototype_with_shared_shape(
-        root_shape: &RootShape,
-        prototype: JsPrototype,
-    ) -> Self {
+    pub fn from_prototype_with_shape(root_shape: &RootShape, prototype: JsPrototype) -> Self {
         let shape = root_shape.shape().change_prototype_transition(prototype);
         Self {
             indexed_properties: IndexedProperties::default(),

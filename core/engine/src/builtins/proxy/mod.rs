@@ -181,7 +181,7 @@ impl Proxy {
         // i. Set P.[[Construct]] as specified in 10.5.13.
         // 6. Set P.[[ProxyTarget]] to target.
         // 7. Set P.[[ProxyHandler]] to handler.
-        let p = JsObject::from_proto_and_data_with_shared_shape(
+        let p = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             context.intrinsics().constructors().object().prototype(),
             Self::new(target.clone(), handler.clone()),

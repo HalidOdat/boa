@@ -1087,7 +1087,7 @@ fn function_construct(
         // see <https://tc39.es/ecma262/#sec-getprototypefromconstructor>
         let prototype =
             get_prototype_from_constructor(&new_target, StandardConstructors::object, context)?;
-        let this = JsObject::from_proto_and_data_with_shared_shape(
+        let this = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             prototype,
             OrdinaryObject,

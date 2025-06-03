@@ -375,8 +375,7 @@ impl BuiltInConstructor for Locale {
         // 6. Let locale be ? OrdinaryCreateFromConstructor(NewTarget, "%Locale.prototype%", internalSlotsList).
         let prototype =
             get_prototype_from_constructor(new_target, StandardConstructors::locale, context)?;
-        let locale =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, tag);
+        let locale = JsObject::from_proto_and_data_with_shape(context.root_shape(), prototype, tag);
 
         // 37. Return locale.
         Ok(locale.into())
@@ -417,10 +416,7 @@ impl Locale {
 
         // 4. Return ! Construct(%Locale%, maximal).
         let prototype = context.intrinsics().constructors().locale().prototype();
-        Ok(
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, loc)
-                .into(),
-        )
+        Ok(JsObject::from_proto_and_data_with_shape(context.root_shape(), prototype, loc).into())
     }
 
     /// [`Intl.Locale.prototype.minimize ( )`][spec]
@@ -456,10 +452,7 @@ impl Locale {
 
         // 4. Return ! Construct(%Locale%, minimal).
         let prototype = context.intrinsics().constructors().locale().prototype();
-        Ok(
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, loc)
-                .into(),
-        )
+        Ok(JsObject::from_proto_and_data_with_shape(context.root_shape(), prototype, loc).into())
     }
 
     /// [`Intl.Locale.prototype.toString ( )`][spec].

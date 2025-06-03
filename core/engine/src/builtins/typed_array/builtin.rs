@@ -2766,7 +2766,7 @@ impl BuiltinTypedArray {
         let len = values.len() as u64;
         // 2. Perform ? AllocateTypedArrayBuffer(O, len).
         let buf = Self::allocate_buffer::<T>(len, context)?;
-        let obj = JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, buf);
+        let obj = JsObject::from_proto_and_data_with_shape(context.root_shape(), proto, buf);
 
         // 3. Let k be 0.
         // 4. Repeat, while k < len,
@@ -2815,8 +2815,7 @@ impl BuiltinTypedArray {
         let indexed = Self::allocate_buffer::<T>(length, context)?;
 
         // 2. Let obj be ! IntegerIndexedObjectCreate(proto).
-        let obj =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, indexed);
+        let obj = JsObject::from_proto_and_data_with_shape(context.root_shape(), proto, indexed);
 
         // 9. Return obj.
         Ok(obj)
@@ -2961,7 +2960,7 @@ impl BuiltinTypedArray {
         // 14. Set O.[[ByteLength]] to byteLength.
         // 15. Set O.[[ByteOffset]] to 0.
         // 16. Set O.[[ArrayLength]] to elementLength.
-        let obj = JsObject::from_proto_and_data_with_shared_shape(
+        let obj = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             proto,
             TypedArray::new(
@@ -3080,7 +3079,7 @@ impl BuiltinTypedArray {
         // 10. Set O.[[ViewedArrayBuffer]] to buffer.
         // 11. Set O.[[ByteOffset]] to offset.
         // 12. Return unused.
-        Ok(JsObject::from_proto_and_data_with_shared_shape(
+        Ok(JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             proto,
             TypedArray::new(buffer, T::ERASED, offset, byte_length, array_length),
@@ -3103,7 +3102,7 @@ impl BuiltinTypedArray {
 
         // 2. Perform ? AllocateTypedArrayBuffer(O, len).
         let buf = Self::allocate_buffer::<T>(len, context)?;
-        let obj = JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, buf);
+        let obj = JsObject::from_proto_and_data_with_shape(context.root_shape(), proto, buf);
 
         // 3. Let k be 0.
         // 4. Repeat, while k < len,

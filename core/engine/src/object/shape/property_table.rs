@@ -78,7 +78,7 @@ impl PropertyTableInner {
 
 /// Represents an ordered property table, that maps [`PropertyTable`] to [`Slot`].
 ///
-/// This is shared between [`crate::object::shape::SharedShape`].
+/// This is shared between [`crate::object::shape::Shape`].
 #[derive(Default, Debug, Clone)]
 pub(crate) struct PropertyTable {
     pub(super) inner: Rc<RefCell<PropertyTableInner>>,

@@ -173,7 +173,7 @@ impl BuiltInConstructor for OrdinaryObject {
             //     a. Return ? OrdinaryCreateFromConstructor(NewTarget, "%Object.prototype%").
             let prototype =
                 get_prototype_from_constructor(new_target, StandardConstructors::object, context)?;
-            let object = JsObject::from_proto_and_data_with_shared_shape(
+            let object = JsObject::from_proto_and_data_with_shape(
                 context.root_shape(),
                 prototype,
                 OrdinaryObject,
@@ -457,13 +457,11 @@ impl OrdinaryObject {
         let properties = args.get_or_undefined(1);
 
         let obj = match prototype.variant() {
-            JsVariant::Object(_) | JsVariant::Null => {
-                JsObject::from_proto_and_data_with_shared_shape(
-                    context.root_shape(),
-                    prototype.as_object().cloned(),
-                    OrdinaryObject,
-                )
-            }
+            JsVariant::Object(_) | JsVariant::Null => JsObject::from_proto_and_data_with_shape(
+                context.root_shape(),
+                prototype.as_object().cloned(),
+                OrdinaryObject,
+            ),
             _ => {
                 return Err(JsNativeError::typ()
                     .with_message(format!(

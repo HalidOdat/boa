@@ -54,7 +54,7 @@ impl Generator {
             );
 
         let generator = if r#async {
-            JsObject::from_proto_and_data_with_shared_shape(
+            JsObject::from_proto_and_data_with_shape(
                 context.root_shape(),
                 proto,
                 AsyncGenerator {
@@ -64,7 +64,7 @@ impl Generator {
                 },
             )
         } else {
-            JsObject::from_proto_and_data_with_shared_shape(
+            JsObject::from_proto_and_data_with_shape(
                 context.root_shape(),
                 proto,
                 crate::builtins::generator::Generator {

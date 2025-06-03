@@ -194,7 +194,7 @@ impl JsMap {
         let prototype = context.intrinsics().constructors().map().prototype();
 
         // Create a default map object with [[MapData]] as a new empty list
-        JsObject::from_proto_and_data_with_shared_shape(
+        JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             prototype,
             <OrderedMap<JsValue>>::new(),

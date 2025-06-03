@@ -6,7 +6,7 @@ use crate::{
     js_string,
     object::{
         internal_methods::InternalMethodContext,
-        shape::{shared_shape::WeakSharedShape, slot::SlotAttributes},
+        shape::{shared_shape::WeakShape, slot::SlotAttributes},
         ObjectInitializer,
     },
     property::{Attribute, PropertyDescriptor, PropertyKey},
@@ -342,7 +342,7 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
 
     assert_eq!(
         code.ic[0].shape.borrow().clone(),
-        Some(WeakSharedShape::from(&o_shape))
+        Some(WeakShape::from(&o_shape))
     );
 
     Ok(())
@@ -366,7 +366,7 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
 
     assert_eq!(
         code.ic[0].shape.borrow().clone(),
-        Some(WeakSharedShape::from(&o_shape))
+        Some(WeakShape::from(&o_shape))
     );
 
     Ok(())

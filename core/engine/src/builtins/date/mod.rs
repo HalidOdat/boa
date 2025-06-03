@@ -302,8 +302,7 @@ impl BuiltInConstructor for Date {
             get_prototype_from_constructor(new_target, StandardConstructors::date, context)?;
 
         // 7. Set O.[[DateValue]] to dv.
-        let obj =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, dv);
+        let obj = JsObject::from_proto_and_data_with_shape(context.root_shape(), prototype, dv);
 
         // 8. Return O.
         Ok(obj.into())

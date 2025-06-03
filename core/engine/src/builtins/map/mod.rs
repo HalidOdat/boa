@@ -141,7 +141,7 @@ impl BuiltInConstructor for Map {
         // 3. Set map.[[MapData]] to a new empty List.
         let prototype =
             get_prototype_from_constructor(new_target, StandardConstructors::map, context)?;
-        let map = JsObject::from_proto_and_data_with_shared_shape(
+        let map = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             prototype,
             <OrderedMap<JsValue>>::new(),
@@ -668,10 +668,7 @@ impl Map {
         let proto = context.intrinsics().constructors().map().prototype();
 
         // 4. Return map.
-        Ok(
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, map)
-                .into(),
-        )
+        Ok(JsObject::from_proto_and_data_with_shape(context.root_shape(), proto, map).into())
     }
 }
 

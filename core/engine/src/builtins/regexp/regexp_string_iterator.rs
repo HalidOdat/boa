@@ -103,7 +103,7 @@ impl RegExpStringIterator {
 
         // 5. Return ! CreateIteratorFromClosure(closure, "%RegExpStringIteratorPrototype%", %RegExpStringIteratorPrototype%).
 
-        let regexp_string_iterator = JsObject::from_proto_and_data_with_shared_shape(
+        let regexp_string_iterator = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             context
                 .intrinsics()

@@ -525,7 +525,7 @@ impl JsProxyBuilder {
                 .expect("new object should be writable");
         }
 
-        let proxy = JsObject::from_proto_and_data_with_shared_shape(
+        let proxy = JsObject::from_proto_and_data_with_shape(
             context.root_shape(),
             context.intrinsics().constructors().object().prototype(),
             Proxy::new(self.target, handler),

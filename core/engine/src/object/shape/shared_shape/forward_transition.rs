@@ -5,12 +5,12 @@ use rustc_hash::FxHashMap;
 
 use crate::object::JsPrototype;
 
-use super::{Inner as SharedShapeInner, TransitionKey};
+use super::{Inner as ShapeInner, TransitionKey};
 
-/// Maps transition key type to a [`SharedShapeInner`] transition.
+/// Maps transition key type to a [`ShapeInner`] transition.
 #[derive(Debug, Trace, Finalize)]
 struct TransitionMap<T: Debug + Trace + Finalize> {
-    map: FxHashMap<T, WeakGc<SharedShapeInner>>,
+    map: FxHashMap<T, WeakGc<ShapeInner>>,
 
     /// This counts the number of insertions after a prune operation.
     insertion_count_since_prune: u8,
@@ -54,7 +54,7 @@ pub(super) struct ForwardTransition {
 
 impl ForwardTransition {
     /// Insert a property transition.
-    pub(super) fn insert_property(&self, key: TransitionKey, value: &Gc<SharedShapeInner>) {
+    pub(super) fn insert_property(&self, key: TransitionKey, value: &Gc<ShapeInner>) {
         let mut this = self.inner.borrow_mut();
         let properties = this.properties.get_or_insert_with(Box::default);
 
@@ -66,7 +66,7 @@ impl ForwardTransition {
     }
 
     /// Insert a prototype transition.
-    pub(super) fn insert_prototype(&self, key: JsPrototype, value: &Gc<SharedShapeInner>) {
+    pub(super) fn insert_prototype(&self, key: JsPrototype, value: &Gc<ShapeInner>) {
         let mut this = self.inner.borrow_mut();
         let prototypes = this.prototypes.get_or_insert_with(Box::default);
 
@@ -78,14 +78,14 @@ impl ForwardTransition {
     }
 
     /// Get a property transition, return [`None`] otherwise.
-    pub(super) fn get_property(&self, key: &TransitionKey) -> Option<WeakGc<SharedShapeInner>> {
+    pub(super) fn get_property(&self, key: &TransitionKey) -> Option<WeakGc<ShapeInner>> {
         let this = self.inner.borrow();
         let transitions = this.properties.as_ref()?;
         transitions.map.get(key).cloned()
     }
 
     /// Get a prototype transition, return [`None`] otherwise.
-    pub(super) fn get_prototype(&self, key: &JsPrototype) -> Option<WeakGc<SharedShapeInner>> {
+    pub(super) fn get_prototype(&self, key: &JsPrototype) -> Option<WeakGc<ShapeInner>> {
         let this = self.inner.borrow();
         let transitions = this.prototypes.as_ref()?;
         transitions.map.get(key).cloned()

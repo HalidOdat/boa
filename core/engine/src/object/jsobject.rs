@@ -138,7 +138,7 @@ impl JsObject {
         let gc = Gc::new(VTableObject {
             object: GcRefCell::new(Object {
                 data,
-                properties: PropertyMap::from_prototype_with_shared_shape(
+                properties: PropertyMap::from_prototype_with_shape(
                     &RootShape::default(),
                     prototype.into(),
                 ),
@@ -160,7 +160,7 @@ impl JsObject {
     /// the provided `data`.
     ///
     /// [`OrdinaryObjectCreate`]: https://tc39.es/ecma262/#sec-ordinaryobjectcreate
-    pub(crate) fn from_proto_and_data_with_shared_shape<O: Into<Option<Self>>, T: NativeObject>(
+    pub(crate) fn from_proto_and_data_with_shape<O: Into<Option<Self>>, T: NativeObject>(
         root_shape: &RootShape,
         prototype: O,
         data: T,
@@ -169,10 +169,7 @@ impl JsObject {
         let gc = Gc::new(VTableObject {
             object: GcRefCell::new(Object {
                 data,
-                properties: PropertyMap::from_prototype_with_shared_shape(
-                    root_shape,
-                    prototype.into(),
-                ),
+                properties: PropertyMap::from_prototype_with_shape(root_shape, prototype.into()),
                 extensible: true,
                 private_elements: ThinVec::new(),
             }),
@@ -584,10 +581,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
         let inner = Gc::new(VTableObject {
             object: GcRefCell::new(Object {
                 data,
-                properties: PropertyMap::from_prototype_with_shared_shape(
-                    root_shape,
-                    prototype.into(),
-                ),
+                properties: PropertyMap::from_prototype_with_shape(root_shape, prototype.into()),
                 extensible: true,
                 private_elements: ThinVec::new(),
             }),
@@ -609,7 +603,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
         let inner = Gc::new(VTableObject {
             object: GcRefCell::new(Object {
                 data,
-                properties: PropertyMap::from_prototype_with_shared_shape(
+                properties: PropertyMap::from_prototype_with_shape(
                     &RootShape::default(),
                     prototype.into(),
                 ),
