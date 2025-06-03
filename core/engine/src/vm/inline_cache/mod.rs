@@ -4,7 +4,7 @@ use boa_gc::GcRefCell;
 use boa_macros::{Finalize, Trace};
 
 use crate::{
-    object::shape::{shared_shape::WeakShape, slot::Slot, Shape},
+    object::shape::{slot::Slot, Shape, WeakShape},
     JsString,
 };
 

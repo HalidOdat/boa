@@ -6,7 +6,7 @@ use crate::{
     js_string,
     object::{
         internal_methods::InternalMethodContext,
-        shape::{shared_shape::WeakShape, slot::SlotAttributes},
+        shape::{slot::SlotAttributes, WeakShape},
         ObjectInitializer,
     },
     property::{Attribute, PropertyDescriptor, PropertyKey},

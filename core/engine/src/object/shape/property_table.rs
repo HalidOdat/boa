@@ -5,7 +5,7 @@ use crate::{
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::{cell::RefCell, rc::Rc};
 
-use super::shared_shape::TransitionKey;
+use super::TransitionKey;
 
 /// The internal representation of [`PropertyTable`].
 #[derive(Default, Debug, Clone)]

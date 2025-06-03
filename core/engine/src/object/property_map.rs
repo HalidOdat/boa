@@ -1,8 +1,7 @@
 use super::{
     shape::{
-        shared_shape::TransitionKey,
         slot::{Slot, SlotAttributes},
-        ChangeTransitionAction, RootShape, Shape,
+        ChangeTransitionAction, RootShape, Shape, TransitionKey,
     },
     JsPrototype, ObjectStorage, PropertyDescriptor, PropertyKey,
 };

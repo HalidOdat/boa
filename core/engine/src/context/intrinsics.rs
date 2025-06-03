@@ -7,7 +7,7 @@ use crate::{
     js_string,
     object::{
         internal_methods::immutable_prototype::IMMUTABLE_PROTOTYPE_EXOTIC_INTERNAL_METHODS,
-        shape::{shared_shape::template::ObjectTemplate, RootShape},
+        shape::{template::ObjectTemplate, RootShape},
         JsFunction, JsObject, Object, CONSTRUCTOR, PROTOTYPE,
     },
     property::{Attribute, PropertyKey},

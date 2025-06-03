@@ -7,7 +7,7 @@ use crate::{
         function::{OrdinaryFunction, ThisMode},
         OrdinaryObject,
     },
-    object::{shape::shared_shape::WeakShape, JsObject},
+    object::{shape::WeakShape, JsObject},
     Context, JsBigInt, JsString, JsValue, SpannedSourceText,
 };
 use bitflags::bitflags;
