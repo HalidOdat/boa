@@ -822,7 +822,29 @@ impl BuiltInFunctionObject {
         // TODO?: 3. Perform PrepareForTailCall
 
         // 4. Return ? Call(func, thisArg, args).
-        func.call(this_arg, args.get(1..).unwrap_or(&[]), context)
+        // func.call(this_arg, args.get(1..).unwrap_or(&[]), context);
+
+        context.vm.stack.push(this_arg.clone()); // this
+        context.vm.stack.push(func.clone()); // func
+
+        let args = args.get(1..).unwrap_or(&[]);
+        let argument_count = args.len();
+        context.vm.stack.calling_convention_push_arguments(args);
+
+        // 3. Return ? F.[[Call]](V, argumentsList).
+        if func.__call__(argument_count).resolve(context)? {
+            return Ok(context.vm.stack.pop());
+        }
+
+        context.vm.frame.realm = context
+            .vm
+            .frames
+            .last()
+            .expect("Function.prototype.call shouldn't be called directly")
+            .realm
+            .clone();
+
+        Ok(JsValue::new(123_456))
     }
 
     /// `Function.prototype.toString()`
