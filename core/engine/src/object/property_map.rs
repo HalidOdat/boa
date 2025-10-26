@@ -153,29 +153,18 @@ impl IndexedProperties {
             return self.convert_to_sparse_and_insert(key, property);
         };
 
+        // If it can fit in a i32 and the truncated version is
+        // equal to the original then it is an integer.
+        let is_rational_integer = |n: f64| n.to_bits() == f64::from(n as i32).to_bits();
+
         match self {
             // Fast Path: continues array access.
-            Self::DenseI32(vec) if key <= vec.len() as u32 => {
-                let len = vec.len() as u32;
-
-                // If it can fit in a i32 and the truncated version is
-                // equal to the original then it is an integer.
-                let is_rational_integer = |n: f64| n.to_bits() == f64::from(n as i32).to_bits();
-
+            Self::DenseI32(vec) if key < vec.len() as u32 => {
                 let value = match value.variant() {
                     JsVariant::Integer32(n) => n,
                     JsVariant::Float64(n) if is_rational_integer(n) => n as i32,
                     JsVariant::Float64(value) => {
                         let mut vec = vec.iter().copied().map(f64::from).collect::<ThinVec<_>>();
-
-                        // If the key is pointing one past the last element, we push it!
-                        //
-                        // Since the previous key is the current key - 1. Meaning that the elements are continuos.
-                        if key == len {
-                            vec.push(value);
-                            *self = Self::DenseF64(vec);
-                            return false;
-                        }
 
                         // If it the key points in at a already taken index, set it.
                         vec[key as usize] = value;
@@ -187,16 +176,7 @@ impl IndexedProperties {
                             .iter()
                             .copied()
                             .map(JsValue::from)
-                            .collect::<ThinVec<JsValue>>();
-
-                        // If the key is pointing one past the last element, we push it!
-                        //
-                        // Since the previous key is the current key - 1. Meaning that the elements are continuos.
-                        if key == len {
-                            vec.push(value);
-                            *self = Self::DenseElement(vec);
-                            return false;
-                        }
+                            .collect::<ThinVec<_>>();
 
                         // If it the key points in at a already taken index, set it.
                         vec[key as usize] = value;
@@ -205,30 +185,12 @@ impl IndexedProperties {
                     }
                 };
 
-                // If the key is pointing one past the last element, we push it!
-                //
-                // Since the previous key is the current key - 1. Meaning that the elements are continuos.
-                if key == len {
-                    vec.push(value);
-                    return false;
-                }
-
                 // If it the key points in at a already taken index, swap and return it.
                 vec[key as usize] = value;
                 true
             }
-            Self::DenseF64(vec) if key <= vec.len() as u32 => {
-                let len = vec.len() as u32;
-
+            Self::DenseF64(vec) if key < vec.len() as u32 => {
                 if let Some(value) = value.as_number() {
-                    // If the key is pointing one past the last element, we push it!
-                    //
-                    // Since the previous key is the current key - 1. Meaning that the elements are continuos.
-                    if key == len {
-                        vec.push(value);
-                        return false;
-                    }
-
                     // If it the key points in at a already taken index, swap and return it.
                     vec[key as usize] = value;
                     return true;
@@ -240,34 +202,65 @@ impl IndexedProperties {
                     .map(JsValue::from)
                     .collect::<ThinVec<JsValue>>();
 
-                // If the key is pointing one past the last element, we push it!
-                //
-                // Since the previous key is the current key - 1. Meaning that the elements are continuos.
-                if key == len {
-                    vec.push(value);
-                    *self = Self::DenseElement(vec);
-                    return false;
-                }
-
                 // If it the key points in at a already taken index, set it.
                 vec[key as usize] = value;
                 *self = Self::DenseElement(vec);
                 true
             }
-            Self::DenseElement(vec) if key <= vec.len() as u32 => {
-                let len = vec.len() as u32;
+            Self::DenseElement(vec) if key < vec.len() as u32 => {
+                vec[key as usize] = value;
+                true
+            }
+            Self::DenseI32(vec) if key == vec.len() as u32 => {
+                let value = match value.variant() {
+                    JsVariant::Integer32(n) => n,
+                    JsVariant::Float64(n) if is_rational_integer(n) => n as i32,
+                    JsVariant::Float64(value) => {
+                        *self = Self::DenseF64(
+                            vec.iter()
+                                .copied()
+                                .map(f64::from)
+                                .chain(std::iter::once(value))
+                                .collect::<ThinVec<_>>(),
+                        );
+                        return false;
+                    }
+                    _ => {
+                        *self = Self::DenseElement(
+                            vec.iter()
+                                .copied()
+                                .map(JsValue::from)
+                                .chain(std::iter::once(value))
+                                .collect::<ThinVec<_>>(),
+                        );
+                        return false;
+                    }
+                };
 
                 // If the key is pointing one past the last element, we push it!
                 //
                 // Since the previous key is the current key - 1. Meaning that the elements are continuos.
-                if key == len {
+                vec.push(value);
+                false
+            }
+            Self::DenseF64(vec) if key == vec.len() as u32 => {
+                if let Some(value) = value.as_number() {
                     vec.push(value);
                     return false;
                 }
 
-                // If it the key points in at a already taken index, set it.
-                vec[key as usize] = value;
-                true
+                *self = Self::DenseElement(
+                    vec.iter()
+                        .copied()
+                        .map(JsValue::from)
+                        .chain(std::iter::once(value))
+                        .collect::<ThinVec<JsValue>>(),
+                );
+                false
+            }
+            Self::DenseElement(vec) if key == vec.len() as u32 => {
+                vec.push(value);
+                false
             }
             Self::Sparse(map) => map.insert(key, property).is_some(),
             _ => self.convert_to_sparse_and_insert(key, property),
