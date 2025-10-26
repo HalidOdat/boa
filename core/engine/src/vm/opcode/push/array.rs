@@ -19,7 +19,7 @@ impl PushNewArray {
             .intrinsics()
             .templates()
             .array()
-            .create(Array, Vec::from([JsValue::new(0)]));
+            .create(Array::default(), Vec::from([JsValue::new(0)]));
         context.vm.set_register(array.into(), value.into());
     }
 }

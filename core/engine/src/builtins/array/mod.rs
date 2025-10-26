@@ -26,7 +26,7 @@ use crate::{
             ordinary_get_own_property,
         },
     },
-    property::{Attribute, PropertyDescriptor, PropertyKey, PropertyNameKind},
+    property::{Attribute, NonMaxU32, PropertyDescriptor, PropertyKey, PropertyNameKind},
     realm::Realm,
     string::StaticJsStrings,
     symbol::JsSymbol,
@@ -56,7 +56,19 @@ pub(crate) enum Direction {
 /// JavaScript `Array` built-in implementation.
 #[derive(Debug, Clone, Copy, Trace, Finalize)]
 #[boa_gc(empty_trace)]
-pub(crate) struct Array;
+pub(crate) struct Array {
+    length: NonMaxU32,
+    writable: bool,
+}
+
+impl Default for Array {
+    fn default() -> Self {
+        Self {
+            length: NonMaxU32::ZERO,
+            writable: true,
+        }
+    }
+}
 
 /// Definitions of the internal object methods for array exotic objects.
 ///
@@ -336,11 +348,13 @@ impl Array {
 
         // Fast path:
         if prototype.is_none() {
-            return Ok(context
-                .intrinsics()
-                .templates()
-                .array()
-                .create(Array, vec![JsValue::new(length)]));
+            return Ok(context.intrinsics().templates().array().create(
+                Array {
+                    length: NonMaxU32::new(length as u32).expect("TODO: already checked"),
+                    writable: true,
+                },
+                vec![JsValue::new(length)],
+            ));
         }
 
         // 7. Return A.
@@ -358,16 +372,21 @@ impl Array {
             .array()
             .has_prototype(&prototype)
         {
-            return Ok(context
-                .intrinsics()
-                .templates()
-                .array()
-                .create(Array, vec![JsValue::new(length)]));
+            return Ok(context.intrinsics().templates().array().create(
+                Array {
+                    length: NonMaxU32::new(length as u32).expect("TODO: already checked"),
+                    writable: true,
+                },
+                vec![JsValue::new(length)],
+            ));
         }
 
-        let array =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, Array)
-                .upcast();
+        let array = JsObject::from_proto_and_data_with_shared_shape(
+            context.root_shape(),
+            prototype,
+            Array::default(),
+        )
+        .upcast();
 
         // 6. Perform ! OrdinaryDefineOwnProperty(A, "length", PropertyDescriptor { [[Value]]: 𝔽(length), [[Writable]]: true, [[Enumerable]]: false, [[Configurable]]: false }).
         ordinary_define_own_property(
@@ -411,7 +430,10 @@ impl Array {
             .templates()
             .array()
             .create_with_indexed_properties(
-                Array,
+                Array {
+                    length: NonMaxU32::new(length as u32).expect("TODO: already checked"),
+                    writable: true,
+                },
                 vec![JsValue::new(length)],
                 IndexedProperties::from_dense_js_value(elements),
             )

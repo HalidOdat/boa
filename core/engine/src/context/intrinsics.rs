@@ -220,7 +220,10 @@ impl Default for StandardConstructors {
             },
             async_function: StandardConstructor::default(),
             generator_function: StandardConstructor::default(),
-            array: StandardConstructor::with_prototype(JsObject::from_proto_and_data(None, Array)),
+            array: StandardConstructor::with_prototype(JsObject::from_proto_and_data(
+                None,
+                Array::default(),
+            )),
             bigint: StandardConstructor::default(),
             number: StandardConstructor::with_prototype(JsObject::from_proto_and_data(None, 0.0)),
             boolean: StandardConstructor::with_prototype(JsObject::from_proto_and_data(
