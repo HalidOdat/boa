@@ -599,7 +599,7 @@ impl JsValue {
                 .intrinsics()
                 .templates()
                 .string()
-                .create(string.clone(), vec![string.len().into()])),
+                .create(string, Vec::default())),
             JsVariant::Symbol(symbol) => Ok(context
                 .intrinsics()
                 .templates()

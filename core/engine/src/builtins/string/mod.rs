@@ -16,7 +16,7 @@ use crate::{
     error::JsNativeError,
     js_string,
     object::{JsObject, internal_methods::get_prototype_from_constructor},
-    property::{Attribute, PropertyDescriptor},
+    property::Attribute,
     realm::Realm,
     string::{CodePoint, StaticJsStrings},
     symbol::JsSymbol,
@@ -260,35 +260,22 @@ impl String {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-stringcreate
-    fn string_create(value: JsString, prototype: JsObject, context: &mut Context) -> JsObject {
-        // 7. Let length be the number of code unit elements in value.
-        let len = value.len();
-
+    fn string_create(
+        value: JsString,
+        prototype: JsObject,
+        context: &mut Context,
+    ) -> JsObject<JsString> {
         // 1. Let S be ! MakeBasicObject(« [[Prototype]], [[Extensible]], [[StringData]] »).
         // 2. Set S.[[Prototype]] to prototype.
         // 3. Set S.[[StringData]] to value.
         // 4. Set S.[[GetOwnProperty]] as specified in 10.4.3.1.
         // 5. Set S.[[DefineOwnProperty]] as specified in 10.4.3.2.
         // 6. Set S.[[OwnPropertyKeys]] as specified in 10.4.3.3.
-        let s =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, value)
-                .upcast();
-
+        // 7. Let length be the number of code unit elements in value.
         // 8. Perform ! DefinePropertyOrThrow(S, "length", PropertyDescriptor { [[Value]]: 𝔽(length),
-        // [[Writable]]: false, [[Enumerable]]: false, [[Configurable]]: false }).
-        s.define_property_or_throw(
-            StaticJsStrings::LENGTH,
-            PropertyDescriptor::builder()
-                .value(len)
-                .writable(false)
-                .enumerable(false)
-                .configurable(false),
-            context,
-        )
-        .expect("length definition for a new string must not fail");
-
+        //          [[Writable]]: false, [[Enumerable]]: false, [[Configurable]]: false }).
         // 9. Return S.
-        s
+        JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, value)
     }
 
     /// Abstract operation `thisStringValue( value )`

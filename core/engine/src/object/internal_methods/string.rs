@@ -1,3 +1,5 @@
+use boa_string::StaticJsStrings;
+
 use crate::{
     Context, JsResult, JsString,
     object::{JsData, JsObject},
@@ -30,6 +32,23 @@ pub(crate) fn string_exotic_get_own_property(
     key: &PropertyKey,
     context: &mut InternalMethodPropertyContext<'_>,
 ) -> JsResult<Option<PropertyDescriptor>> {
+    let string = obj
+        .clone()
+        .downcast::<JsString>()
+        .expect("string exotic method should only be callable from string objects");
+
+    if *key == PropertyKey::String(StaticJsStrings::LENGTH) {
+        let len = string.borrow().data().len();
+        return Ok(Some(
+            PropertyDescriptor::builder()
+                .value(len)
+                .writable(false)
+                .enumerable(false)
+                .configurable(false)
+                .build(),
+        ));
+    }
+
     // 1. Assert: IsPropertyKey(P) is true.
     // 2. Let desc be OrdinaryGetOwnProperty(S, P).
     let desc = super::ordinary_get_own_property(obj, key, context)?;
@@ -39,7 +58,7 @@ pub(crate) fn string_exotic_get_own_property(
         Ok(desc)
     } else {
         // 4. Return ! StringGetOwnProperty(S, P).
-        Ok(string_get_own_property(obj, key))
+        Ok(string_get_own_property(&string, key))
     }
 }
 
@@ -55,9 +74,23 @@ pub(crate) fn string_exotic_define_own_property(
     desc: PropertyDescriptor,
     context: &mut InternalMethodPropertyContext<'_>,
 ) -> JsResult<bool> {
+    let string = obj
+        .clone()
+        .downcast::<JsString>()
+        .expect("string exotic method should only be callable from string objects");
+
+    if *key == PropertyKey::String(StaticJsStrings::LENGTH) {
+        dbg!(&desc);
+        return Ok(desc.writable() != Some(true)
+            && desc.enumerable() != Some(true)
+            && desc.configurable() != Some(true)
+            && (desc.value().is_none()
+                || desc.value() == Some(&string.borrow().data().len().into())));
+    }
+
     // 1. Assert: IsPropertyKey(P) is true.
     // 2. Let stringDesc be ! StringGetOwnProperty(S, P).
-    let string_desc = string_get_own_property(obj, key);
+    let string_desc = string_get_own_property(&string, key);
 
     // 3. If stringDesc is not undefined, then
     if let Some(string_desc) = string_desc {
@@ -121,6 +154,9 @@ pub(crate) fn string_exotic_own_property_keys(
     // 8. For each own property key P of O such that Type(P) is Symbol, in ascending
     // chronological order of property creation, do
     //      a. Add P as the last element of keys.
+
+    // NOTE: "length" is a special key type.
+    keys.push(StaticJsStrings::LENGTH.into());
     keys.extend(obj.borrow().properties.shape.keys());
 
     // 9. Return keys.
@@ -133,7 +169,10 @@ pub(crate) fn string_exotic_own_property_keys(
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-stringgetownproperty
-fn string_get_own_property(obj: &JsObject, key: &PropertyKey) -> Option<PropertyDescriptor> {
+fn string_get_own_property(
+    obj: &JsObject<JsString>,
+    key: &PropertyKey,
+) -> Option<PropertyDescriptor> {
     // 1. Assert: S is an Object that has a [[StringData]] internal slot.
     // 2. Assert: IsPropertyKey(P) is true.
     // 3. If Type(P) is not String, return undefined.
@@ -146,17 +185,14 @@ fn string_get_own_property(obj: &JsObject, key: &PropertyKey) -> Option<Property
         _ => return None,
     };
 
-    // 8. Let str be S.[[StringData]].
-    // 9. Assert: Type(str) is String.
-    let string = obj
-        .downcast_ref::<JsString>()
-        .expect("string exotic method should only be callable from string objects")
-        .clone();
+    // SKIP: 8. Let str be S.[[StringData]].
+    // SKIP: 9. Assert: Type(str) is String.
 
     // 10. Let len be the length of str.
     // 11. If ℝ(index) < 0 or len ≤ ℝ(index), return undefined.
     // 12. Let resultStr be the String value of length 1, containing one code unit from str, specifically the code unit at index ℝ(index).
-    let result_str = string.get(pos..=pos)?;
+    let obj = obj.borrow();
+    let result_str = obj.data().get(pos..=pos)?;
 
     // 13. Return the PropertyDescriptor { [[Value]]: resultStr, [[Writable]]: false, [[Enumerable]]: true, [[Configurable]]: false }.
     let desc = PropertyDescriptor::builder()

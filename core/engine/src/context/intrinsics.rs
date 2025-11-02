@@ -1426,10 +1426,6 @@ impl ObjectTemplates {
         let boolean =
             ObjectTemplate::with_prototype(root_shape, constructors.boolean().prototype());
         let mut string = ObjectTemplate::new(root_shape);
-        string.property(
-            length_property_key.clone(),
-            Attribute::READONLY | Attribute::PERMANENT | Attribute::NON_ENUMERABLE,
-        );
         string.set_prototype(constructors.string().prototype());
 
         let mut regexp_without_proto = ObjectTemplate::new(root_shape);
@@ -1616,8 +1612,7 @@ impl ObjectTemplates {
     ///
     /// Transitions:
     ///
-    /// 1. `"length"`: (`READONLY`, `PERMANENT`,`NON_ENUMERABLE`)
-    /// 2. `__proto__`: `String.prototype`
+    /// 1. `__proto__`: `String.prototype`
     pub(crate) const fn string(&self) -> &ObjectTemplate {
         &self.string
     }
