@@ -1,12 +1,12 @@
 use crate::{
-    Context, JsBigInt, JsResult, JsValue, JsVariant,
     builtins::{
-        Number,
         number::{f64_to_int32, f64_to_uint32},
+        Number,
     },
     error::JsNativeError,
     js_string,
     value::{JsSymbol, Numeric, PreferredType},
+    Context, JsBigInt, JsResult, JsValue, JsVariant,
 };
 
 impl JsValue {
@@ -15,9 +15,14 @@ impl JsValue {
         Ok(match (self.variant(), other.variant()) {
             // Fast path:
             // Numeric add
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => x
-                .checked_add(y)
-                .map_or_else(|| Self::new(f64::from(x) + f64::from(y)), Self::new),
+            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => {
+                if let Some(value) = x.checked_add(y) {
+                    Self::new(value)
+                } else {
+                    let value = i64::from(x) + i64::from(y);
+                    Self::new(value as f64)
+                }
+            }
             (JsVariant::Float64(x), JsVariant::Float64(y)) => Self::new(x + y),
             (JsVariant::Integer32(x), JsVariant::Float64(y)) => Self::new(f64::from(x) + y),
             (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(x + f64::from(y)),
@@ -55,9 +60,14 @@ impl JsValue {
     pub fn sub(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
         Ok(match (self.variant(), other.variant()) {
             // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => x
-                .checked_sub(y)
-                .map_or_else(|| Self::new(f64::from(x) - f64::from(y)), Self::new),
+            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => {
+                if let Some(value) = x.checked_sub(y) {
+                    Self::new(value)
+                } else {
+                    let value = i64::from(x) - i64::from(y);
+                    Self::new(value as f64)
+                }
+            }
             (JsVariant::Float64(x), JsVariant::Float64(y)) => Self::new(x - y),
             (JsVariant::Integer32(x), JsVariant::Float64(y)) => Self::new(f64::from(x) - y),
             (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(x - f64::from(y)),
@@ -79,13 +89,19 @@ impl JsValue {
 
     /// Perform the binary `*` operator on the value and return the result.
     pub fn mul(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+        const SIGN_BIT: i32 = i32::MAX;
         Ok(match (self.variant(), other.variant()) {
             // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => x
-                .checked_mul(y)
-                // Check for the special case of `0 * -N` which must produce `-0.0`
-                .filter(|v| *v != 0 || i32::min(x, y) >= 0)
-                .map_or_else(|| Self::new(f64::from(x) * f64::from(y)), Self::new),
+            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => {
+                if ((x ^ y) & SIGN_BIT) != 0 {
+                    JsValue::new(-0.0)
+                } else if let Some(value) = x.checked_mul(y) {
+                    JsValue::new(value)
+                } else {
+                    let value = i64::from(x) * i64::from(y);
+                    Self::new(value as f64)
+                }
+            }
             (JsVariant::Float64(x), JsVariant::Float64(y)) => Self::new(x * y),
             (JsVariant::Integer32(x), JsVariant::Float64(y)) => Self::new(f64::from(x) * y),
             (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(x * f64::from(y)),
@@ -687,6 +703,10 @@ pub enum AbstractRelation {
 impl From<bool> for AbstractRelation {
     #[inline]
     fn from(value: bool) -> Self {
-        if value { Self::True } else { Self::False }
+        if value {
+            Self::True
+        } else {
+            Self::False
+        }
     }
 }
