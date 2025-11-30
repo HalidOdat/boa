@@ -1,7 +1,9 @@
 use crate::{Statistics, VersionedStats};
 
 use super::SuiteResult;
+use chrono::Utc;
 use color_eyre::{Result, eyre::WrapErr};
+use directories::ProjectDirs;
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -78,6 +80,9 @@ const RESULTS_FILE_NAME: &str = "results.json";
 /// File name of the "features" JSON file.
 const FEATURES_FILE_NAME: &str = "features.json";
 
+/// Directory name for run history.
+const HISTORY_DIR_NAME: &str = "history";
+
 /// Writes the results of running the test suite to the given JSON output file.
 ///
 /// It will append the results to the ones already present, in an array.
@@ -146,13 +151,36 @@ pub(crate) fn write_json(
         Vec::new()
     };
 
-    all_features.push(new_results.into());
+    all_features.push(new_results.clone().into());
 
     let features = BufWriter::new(fs::File::create(&features)?);
     serde_json::to_writer(features, &all_features)?;
 
     if verbose != 0 {
         println!("Features written correctly");
+    }
+
+    // Write the run history to platform-specific config directory.
+    // Each run creates a new timestamped directory containing a copy of latest.json.
+    // Location: Linux: ~/.config/boa_tester/history/<timestamp>/latest.json
+    //           macOS: ~/Library/Application Support/boa_tester/history/<timestamp>/latest.json
+    //           Windows: %APPDATA%\boa_tester\history\<timestamp>\latest.json
+    if let Some(proj_dirs) = ProjectDirs::from("", "", "boa_tester") {
+        let history_dir = proj_dirs.config_dir().join(HISTORY_DIR_NAME);
+        fs::create_dir_all(&history_dir)?;
+
+        let timestamp = Utc::now().timestamp();
+        let run_dir = history_dir.join(timestamp.to_string());
+        fs::create_dir_all(&run_dir)?;
+
+        // Write the full results as latest.json in the run directory
+        let run_latest = run_dir.join(LATEST_FILE_NAME);
+        let run_file = BufWriter::new(fs::File::create(run_latest)?);
+        serde_json::to_writer(run_file, &new_results)?;
+
+        if verbose != 0 {
+            println!("Run history written to {}", run_dir.display());
+        }
     }
 
     Ok(())
