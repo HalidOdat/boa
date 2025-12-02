@@ -1,6 +1,6 @@
 use crate::utils::{
-    RenameScheme, SpannedResult, error, take_error_from_attrs, take_length_from_attrs,
-    take_name_value_attr, take_path_attr,
+    RenameScheme, SpannedResult, error, remove_all_boa_attrs, take_error_from_attrs,
+    take_length_from_attrs, take_name_value_attr, take_path_attr,
 };
 use proc_macro::TokenStream;
 use proc_macro2::{Span as Span2, TokenStream as TokenStream2};
@@ -12,8 +12,9 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
 use syn::{
-    Attribute, ConstParam, Expr, FnArg, GenericParam, Ident, ImplItemFn, ItemImpl, LifetimeParam,
-    Lit, Meta, MetaNameValue, PatType, Receiver, ReturnType, Signature, Token, Type, TypeParam,
+    Attribute, ConstParam, Expr, FnArg, GenericParam, Ident, ImplItemConst, ImplItemFn, ItemImpl,
+    LifetimeParam, Lit, Meta, MetaNameValue, PatType, Receiver, ReturnType, Signature, Token, Type,
+    TypeParam,
 };
 
 /// A function representation. Takes a function from the AST and remember its name, length and
@@ -97,7 +98,7 @@ impl Function {
                         false
                     }
                 }
-                _ => take_path_attr(&mut pat_type.attrs, "context"),
+                _ => take_path_attr(&mut pat_type.attrs, "context").unwrap_or(false),
             },
             _ => false,
         };
@@ -407,6 +408,9 @@ struct ClassVisitor {
     // Whether we detected a constructor while visiting.
     constructor: Option<Function>,
 
+    // Optional inherit function that returns the prototype to inherit from.
+    inherit_fn: Option<Ident>,
+
     // All static functions recorded.
     statics: Vec<Function>,
 
@@ -415,6 +419,9 @@ struct ClassVisitor {
 
     // All accessors (getters and/or setters) with their names.
     accessors: BTreeMap<String, Accessor>,
+
+    // All constants recorded.
+    constants: Vec<(String, TokenStream2)>,
 
     // All errors we found along the way.
     errors: Option<syn::Error>,
@@ -426,21 +433,21 @@ impl ClassVisitor {
             renaming,
             type_,
             constructor: None,
+            inherit_fn: None,
             statics: Vec::new(),
             methods: Vec::new(),
             accessors: BTreeMap::default(),
+            constants: Vec::new(),
             errors: None,
         }
     }
 
     fn name_of(&self, fn_: &mut ImplItemFn) -> SpannedResult<String> {
-        take_name_value_attr(&mut fn_.attrs, "rename").map_or_else(
-            || Ok(self.renaming.rename(fn_.sig.ident.to_string())),
-            |nv| match &nv {
-                Lit::Str(s) => Ok(s.value()),
-                _ => error(&nv, "Invalid attribute value literal"),
-            },
-        )
+        match take_name_value_attr(&mut fn_.attrs, "rename")? {
+            None => Ok(self.renaming.rename(fn_.sig.ident.to_string())),
+            Some(Lit::Str(s)) => Ok(s.value()),
+            Some(nv) => error(&nv, "Invalid attribute value literal"),
+        }
     }
 
     fn method(
@@ -545,6 +552,18 @@ impl ClassVisitor {
             }
         });
 
+        let builder_constants = self.constants.iter().map(|(name, value)| {
+            quote! {
+                builder.static_property(
+                    boa_engine::js_string!( #name ),
+                    #value,
+                    boa_engine::property::Attribute::ENUMERABLE
+                        | boa_engine::property::Attribute::READONLY
+                        | boa_engine::property::Attribute::PERMANENT
+                );
+            }
+        });
+
         let constructor_body = self.constructor.as_ref().map_or_else(
             || {
                 quote! {
@@ -553,6 +572,19 @@ impl ClassVisitor {
             },
             |c| c.body.clone(),
         );
+
+        // Generate code to call inherit function if it exists
+        let inherit_setup = if let Some(inherit_fn_name) = &self.inherit_fn {
+            quote! {
+                // Call the inherit function to get the prototype
+                let prototype = Self::#inherit_fn_name(builder.context())?;
+
+                // Set the prototype to inherit from
+                builder.inherit(prototype);
+            }
+        } else {
+            quote! {}
+        };
 
         quote! {
             impl boa_engine::class::Class for #class_ty {
@@ -568,8 +600,14 @@ impl ClassVisitor {
                 }
 
                 fn init(builder: &mut boa_engine::class::ClassBuilder) -> boa_engine::JsResult<()> {
+                    // Set up inheritance if specified
+                    #inherit_setup
+
                     // Add all statics.
                     #(#builder_statics)*
+
+                    // Add all constants.
+                    #(#builder_constants)*
 
                     // Add all accessors.
                     #(#accessors)*
@@ -589,11 +627,89 @@ impl VisitMut for ClassVisitor {
     #[allow(clippy::similar_names)]
     fn visit_impl_item_fn_mut(&mut self, item: &mut ImplItemFn) {
         // If there's a `boa` argument, parse it.
-        let has_ctor_attr = take_path_attr(&mut item.attrs, "constructor");
-        let has_getter_attr = take_path_attr(&mut item.attrs, "getter");
-        let has_setter_attr = take_path_attr(&mut item.attrs, "setter");
-        let has_method_attr = take_path_attr(&mut item.attrs, "method");
-        let has_static_attr = take_path_attr(&mut item.attrs, "static");
+        let has_ignore_attr = match take_path_attr(&mut item.attrs, "ignore") {
+            Ok(has) => has,
+            Err((span, msg)) => {
+                self.error(span, msg);
+                return;
+            }
+        };
+        if has_ignore_attr {
+            // Remove all remaining #[boa(...)] attributes to prevent compilation errors
+            remove_all_boa_attrs(&mut item.attrs);
+            // Skip processing this function entirely
+            syn::visit_mut::visit_impl_item_fn_mut(self, item);
+            return;
+        }
+
+        let has_ctor_attr = match take_path_attr(&mut item.attrs, "constructor") {
+            Ok(has) => has,
+            Err((span, msg)) => {
+                self.error(span, msg);
+                return;
+            }
+        };
+        let has_getter_attr = match take_path_attr(&mut item.attrs, "getter") {
+            Ok(has) => has,
+            Err((span, msg)) => {
+                self.error(span, msg);
+                return;
+            }
+        };
+        let has_setter_attr = match take_path_attr(&mut item.attrs, "setter") {
+            Ok(has) => has,
+            Err((span, msg)) => {
+                self.error(span, msg);
+                return;
+            }
+        };
+        let has_method_attr = match take_path_attr(&mut item.attrs, "method") {
+            Ok(has) => has,
+            Err((span, msg)) => {
+                self.error(span, msg);
+                return;
+            }
+        };
+        let has_static_attr = match take_path_attr(&mut item.attrs, "static") {
+            Ok(has) => has,
+            Err((span, msg)) => {
+                self.error(span, msg);
+                return;
+            }
+        };
+        let has_inherit_attr = match take_path_attr(&mut item.attrs, "inherit") {
+            Ok(has) => has,
+            Err((span, msg)) => {
+                self.error(span, msg);
+                return;
+            }
+        };
+
+        if has_inherit_attr {
+            // Validate signature: fn(&mut Context) -> JsResult<JsObject>
+            if self.inherit_fn.is_some() {
+                self.error(
+                    item.sig.span(),
+                    "Only one #[boa(inherit)] function is allowed",
+                );
+            } else {
+                // Basic signature validation
+                let valid_sig = matches!(&item.sig.inputs.len(), 1)
+                    && matches!(&item.sig.output, ReturnType::Type(_, _));
+
+                if !valid_sig {
+                    self.error(
+                        item.sig.span(),
+                        "#[boa(inherit)] function must have signature: fn(context: &mut Context) -> JsResult<JsObject>"
+                    );
+                } else {
+                    self.inherit_fn = Some(item.sig.ident.clone());
+                }
+            }
+            // Don't process as a method
+            syn::visit_mut::visit_impl_item_fn_mut(self, item);
+            return;
+        }
 
         if has_getter_attr && let Err((span, msg)) = self.getter(item) {
             self.error(span, msg);
@@ -618,6 +734,39 @@ impl VisitMut for ClassVisitor {
         }
 
         syn::visit_mut::visit_impl_item_fn_mut(self, item);
+    }
+
+    fn visit_impl_item_const_mut(&mut self, item: &mut ImplItemConst) {
+        let has_ignore_attr = match take_path_attr(&mut item.attrs, "ignore") {
+            Ok(has) => has,
+            Err((span, msg)) => {
+                self.error(span, msg);
+                return;
+            }
+        };
+        if has_ignore_attr {
+            // Remove all remaining #[boa(...)] attributes to prevent compilation errors
+            remove_all_boa_attrs(&mut item.attrs);
+            // Skip processing this constant entirely
+            syn::visit_mut::visit_impl_item_const_mut(self, item);
+            return;
+        }
+
+        let has_constant_attr = match take_path_attr(&mut item.attrs, "constant") {
+            Ok(has) => has,
+            Err((span, msg)) => {
+                self.error(span, msg);
+                return;
+            }
+        };
+
+        if has_constant_attr {
+            let name = item.ident.to_string();
+            let expr = &item.expr;
+            self.constants.push((name, quote! { #expr }));
+        }
+
+        syn::visit_mut::visit_impl_item_const_mut(self, item);
     }
 }
 
@@ -690,7 +839,7 @@ pub(crate) fn class_impl(attr: TokenStream, input: TokenStream) -> TokenStream {
 
     let class_impl = visitor.serialize_class_impl(&impl_.self_ty, &name);
 
-    let debug = take_path_attr(&mut impl_.attrs, "debug");
+    let debug = take_path_attr(&mut impl_.attrs, "debug").unwrap_or(false);
 
     let tokens = quote! {
         // Keep the original implementation as is.

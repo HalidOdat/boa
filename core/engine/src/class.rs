@@ -108,7 +108,10 @@ use crate::{
     context::intrinsics::StandardConstructor,
     error::JsNativeError,
     native_function::NativeFunction,
-    object::{ConstructorBuilder, FunctionBinding, JsFunction, JsObject, NativeObject, PROTOTYPE},
+    object::{
+        ConstructorBuilder, FunctionBinding, JsFunction, JsObject, JsPrototype, NativeObject,
+        PROTOTYPE,
+    },
     property::{Attribute, PropertyDescriptor, PropertyKey},
 };
 
@@ -377,5 +380,13 @@ impl<'ctx> ClassBuilder<'ctx> {
     #[inline]
     pub fn context(&mut self) -> &mut Context {
         self.builder.context()
+    }
+
+    /// Specify the parent prototype which objects created by this constructor inherit from.
+    ///
+    /// Default is `Object.prototype`
+    pub fn inherit<O: Into<JsPrototype>>(&mut self, prototype: O) -> &mut Self {
+        self.builder.inherit(prototype);
+        self
     }
 }

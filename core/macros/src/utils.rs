@@ -8,14 +8,24 @@ use syn::{Attribute, Expr, ExprLit, Lit, MetaNameValue};
 
 pub(crate) type SpannedResult<T> = Result<T, (Span2, String)>;
 
+/// Remove all remaining `#[boa(...)]` attributes from the attribute list.
+/// This is useful when we want to completely skip processing an item marked with `#[boa(ignore)]`.
+pub(crate) fn remove_all_boa_attrs(attrs: &mut Vec<Attribute>) {
+    attrs.retain(|attr| !attr.path().is_ident("boa"));
+}
+
 /// A function to make it easier to return error messages.
 pub(crate) fn error<T>(span: &impl Spanned, message: impl Display) -> SpannedResult<T> {
     Err((span.span(), message.to_string()))
 }
 
 /// Look (and remove from AST) a `path` version of the attribute `boa`, e.g. `#[boa(something)]`.
-pub(crate) fn take_path_attr(attrs: &mut Vec<Attribute>, name: &str) -> bool {
-    if let Some((i, _)) = attrs
+/// Returns an error if duplicate attributes are found.
+pub(crate) fn take_path_attr(attrs: &mut Vec<Attribute>, name: &str) -> SpannedResult<bool> {
+    let mut found = false;
+    let mut first_span: Option<Span2> = None;
+
+    while let Some((i, _)) = attrs
         .iter()
         .enumerate()
         .filter(|(_, a)| a.path().is_ident("boa"))
@@ -23,17 +33,29 @@ pub(crate) fn take_path_attr(attrs: &mut Vec<Attribute>, name: &str) -> bool {
         .filter_map(|(i, m)| m.parse_args_with(Ident::parse_any).ok().map(|p| (i, p)))
         .find(|(_, path)| path == name)
     {
+        if found {
+            // Found a duplicate
+            return Err((
+                first_span.unwrap(),
+                format!("duplicate #[boa({name})] attribute found"),
+            ));
+        }
+        first_span = Some(attrs[i].span());
         attrs.remove(i);
-        true
-    } else {
-        false
+        found = true;
     }
+
+    Ok(found)
 }
 
 /// Look (and remove from AST) for a `#[boa(rename = ...)]` attribute, where `...`
 /// is a literal. The validation of the literal's type should be done separately.
-pub(crate) fn take_name_value_attr(attrs: &mut Vec<Attribute>, name: &str) -> Option<Lit> {
-    if let Some((i, lit)) = attrs
+/// Returns an error if duplicate attributes are found.
+pub(crate) fn take_name_value_attr(
+    attrs: &mut Vec<Attribute>,
+    name: &str,
+) -> SpannedResult<Option<Lit>> {
+    let result = attrs
         .iter()
         .enumerate()
         .filter(|(_, a)| a.meta.path().is_ident("boa"))
@@ -47,18 +69,44 @@ pub(crate) fn take_name_value_attr(attrs: &mut Vec<Attribute>, name: &str) -> Op
         .find_map(|(i, nv)| match &nv.value {
             Expr::Lit(ExprLit { lit, .. }) => Some((i, lit.clone())),
             _ => None,
-        })
-    {
+        });
+
+    if let Some((i, lit)) = result {
+        let first_span = attrs[i].span();
         attrs.remove(i);
-        Some(lit)
+
+        // Check for duplicate attributes
+        if let Some((_, _)) = attrs
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.meta.path().is_ident("boa"))
+            .filter_map(|(i, a)| a.meta.require_list().ok().map(|nv| (i, nv)))
+            .filter_map(|(i, a)| {
+                syn::parse2::<MetaNameValue>(a.tokens.to_token_stream())
+                    .ok()
+                    .map(|nv| (i, nv))
+            })
+            .filter(|(_, nv)| nv.path.is_ident(name))
+            .find_map(|(i, nv)| match &nv.value {
+                Expr::Lit(ExprLit { lit, .. }) => Some((i, lit.clone())),
+                _ => None,
+            })
+        {
+            return Err((
+                first_span,
+                format!("duplicate #[boa({name} = ...)] attribute found"),
+            ));
+        }
+
+        Ok(Some(lit))
     } else {
-        None
+        Ok(None)
     }
 }
 
 /// Take the length name-value from the list of attributes.
 pub(crate) fn take_length_from_attrs(attrs: &mut Vec<Attribute>) -> SpannedResult<Option<usize>> {
-    match take_name_value_attr(attrs, "length") {
+    match take_name_value_attr(attrs, "length")? {
         None => Ok(None),
         Some(lit) => match lit {
             Lit::Int(int) if int.base10_parse::<usize>().is_ok() => int
@@ -74,7 +122,7 @@ pub(crate) fn take_name_value_string(
     attrs: &mut Vec<Attribute>,
     name: &str,
 ) -> SpannedResult<Option<String>> {
-    match take_name_value_attr(attrs, name) {
+    match take_name_value_attr(attrs, name)? {
         None => Ok(None),
         Some(lit) => match lit {
             Lit::Str(s) => Ok(Some(s.value())),
@@ -123,7 +171,7 @@ impl RenameScheme {
         attrs: &mut Vec<Attribute>,
         name: &str,
     ) -> SpannedResult<Option<Self>> {
-        match take_name_value_attr(attrs, name) {
+        match take_name_value_attr(attrs, name)? {
             None => Ok(None),
             Some(Lit::Str(lit_str)) => Self::from_str(lit_str.value().as_str())
                 .map_err(|e| (lit_str.span(), e))

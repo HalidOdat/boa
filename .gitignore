@@ -7,7 +7,7 @@
 *.*.swo
 
 # Build
-target
+/target
 dist
 **/*.rs.bk
 node_modules

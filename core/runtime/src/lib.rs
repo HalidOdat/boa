@@ -111,10 +111,15 @@ pub mod console;
 pub use console::{Console, ConsoleState, DefaultLogger, Logger, NullLogger};
 
 pub mod clone;
+pub mod dom_exception;
 pub mod event;
 
 #[doc(inline)]
+pub use dom_exception::DOMException;
+#[doc(inline)]
 pub use event::Event;
+#[doc(inline)]
+pub use event::EventTarget;
 
 #[cfg(feature = "fetch")]
 pub mod fetch;
@@ -237,6 +242,24 @@ pub(crate) mod test {
         pub(crate) fn run(source: impl Into<Cow<'static, str>>) -> Self {
             Self(Inner::Run {
                 source: source.into(),
+            })
+        }
+
+        /// Evaluates `source`, panicking if the result is not `true`.
+        pub(crate) fn assert(source: impl Into<Cow<'static, str>>) -> Self {
+            Self(Inner::Assert {
+                source: source.into(),
+            })
+        }
+
+        /// Evaluates `source` and compares it with `expected` using `==`.
+        pub(crate) fn assert_eq(
+            source: impl Into<Cow<'static, str>>,
+            expected: impl Into<JsValue>,
+        ) -> Self {
+            Self(Inner::AssertEq {
+                source: source.into(),
+                expected: expected.into(),
             })
         }
 

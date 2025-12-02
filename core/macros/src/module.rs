@@ -185,7 +185,7 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
             | Item::Type(ItemType { attrs, .. })
             | Item::Union(ItemUnion { attrs, .. })
             | Item::Use(ItemUse { attrs, .. }) => {
-                if take_path_attr(attrs, "skip") {
+                if take_path_attr(attrs, "skip").unwrap_or(false) {
                     original_module_decl = quote! {
                         #original_module_decl
                         #item
@@ -239,7 +239,7 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
         }
     }
 
-    let debug = take_path_attr(&mut mod_.attrs, "debug");
+    let debug = take_path_attr(&mut mod_.attrs, "debug").unwrap_or(false);
     let vis = mod_.vis;
     let name = mod_.ident;
     let attrs = mod_.attrs;

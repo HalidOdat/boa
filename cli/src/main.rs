@@ -568,6 +568,12 @@ fn add_runtime(printer: SharedExternalPrinterLogger, context: &mut Context) {
         context,
     )
     .expect("should not fail while registering the runtime");
+
+    boa_runtime::event::register(context).expect("should not fail while registering Event");
+    boa_runtime::event::target::register(context)
+        .expect("should not fail while registering EventTarget");
+    boa_runtime::dom_exception::register(context)
+        .expect("should not fail while registering DOMException");
 }
 
 #[allow(clippy::struct_field_names)]
