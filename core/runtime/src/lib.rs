@@ -111,6 +111,11 @@ pub mod console;
 pub use console::{Console, ConsoleState, DefaultLogger, Logger, NullLogger};
 
 pub mod clone;
+pub mod event;
+
+#[doc(inline)]
+pub use event::Event;
+
 #[cfg(feature = "fetch")]
 pub mod fetch;
 pub mod interval;
