@@ -7,7 +7,7 @@
 
 use crate::fetch::headers::JsHeaders;
 use boa_engine::object::builtins::{JsPromise, JsUint8Array};
-use boa_engine::value::{TryFromJs, TryIntoJs};
+use boa_engine::value::{Convert, TryFromJs, TryIntoJs};
 use boa_engine::{
     Context, JsData, JsNativeError, JsResult, JsString, JsValue, boa_class, js_error, js_str,
     js_string,
@@ -104,6 +104,8 @@ pub struct JsResponse {
     #[unsafe_ignore_trace]
     status: Option<StatusCode>,
 
+    status_text: JsString,
+
     headers: JsHeaders,
 
     #[unsafe_ignore_trace]
@@ -116,6 +118,7 @@ impl JsResponse {
     pub fn basic(url: JsString, inner: http::Response<Vec<u8>>) -> Self {
         let (parts, body) = inner.into_parts();
         let status = Some(parts.status);
+        let status_text = JsString::from(status.and_then(|s| s.canonical_reason()).unwrap_or(""));
         let headers = JsHeaders::from_http(parts.headers);
         let body = Rc::new(body);
 
@@ -123,6 +126,7 @@ impl JsResponse {
             url,
             r#type: ResponseType::Basic,
             status,
+            status_text,
             headers,
             body,
         }
@@ -135,6 +139,7 @@ impl JsResponse {
             url: js_string!(""),
             r#type: ResponseType::Error,
             status: None,
+            status_text: JsString::default(),
             headers: JsHeaders::default(),
             body: Rc::new(Vec::new()),
         }
@@ -148,7 +153,7 @@ impl JsResponse {
 }
 
 /// Options used in the construction of a `Response` object.
-#[derive(Debug, Clone, TryFromJs, TryIntoJs, Trace, Finalize, JsData)]
+#[derive(Debug, Clone, Default, TryFromJs, TryIntoJs, Trace, Finalize, JsData)]
 #[boa(rename_all = "camelCase")]
 pub struct JsResponseOptions {
     status: Option<u16>,
@@ -166,8 +171,31 @@ impl JsResponse {
     }
 
     #[boa(constructor)]
-    fn constructor(_body: Option<JsValue>, _options: JsResponseOptions) -> Self {
-        Self::basic(js_string!(""), http::Response::new(Vec::new()))
+    fn constructor(
+        body: Option<JsValue>,
+        options: Option<JsResponseOptions>,
+        context: &mut Context,
+    ) -> JsResult<Self> {
+        // Response constructor steps (https://fetch.spec.whatwg.org/#dom-response):
+        //
+        // 1. Set this's response to a new response.
+        // NOTE: Implicit - we construct the JsResponse struct
+
+        // 2. Set this's headers to a new Headers object with this's relevant realm,
+        //    whose header list is this's response's header list and guard is "response".
+        // NOTE: Handled in initialize
+
+        // 3. Let bodyWithType be null.
+
+        // 4. If body is non-null, then set bodyWithType to the result of extracting body.
+        let body_with_type = if let Some(body_value) = body {
+            Some(extract_body(body_value, context)?)
+        } else {
+            None
+        };
+
+        // 5. Perform initialize a response given this, init, and bodyWithType.
+        initialize(options.unwrap_or_default(), body_with_type, context)
     }
 
     #[boa(getter)]
@@ -178,11 +206,7 @@ impl JsResponse {
 
     #[boa(getter)]
     fn status_text(&self) -> JsString {
-        if let Some(status) = self.status {
-            JsString::from(status.canonical_reason().unwrap_or_else(|| status.as_str()))
-        } else {
-            JsString::default()
-        }
+        self.status_text.clone()
     }
 
     #[boa(getter)]
@@ -236,4 +260,215 @@ impl JsResponse {
             context,
         )
     }
+}
+
+/// Initialize a response.
+///
+/// This implements the "initialize a response" algorithm from the Fetch specification:
+/// https://fetch.spec.whatwg.org/#initialize-a-response
+///
+/// To initialize a response, given a Response object response, ResponseInit init,
+/// and null or a body with type body:
+///
+/// # Errors
+/// Returns an error if the response cannot be initialized.
+fn initialize(
+    options: JsResponseOptions,
+    body_with_type: Option<(Vec<u8>, Option<String>)>,
+    _context: &mut Context,
+) -> JsResult<JsResponse> {
+    // 1. If init["status"] is not in the range 200 to 599, inclusive, then throw a RangeError.
+    let status = options.status.unwrap_or(200);
+    if !(200..=599).contains(&status) {
+        return Err(js_error!(RangeError: "Response status must be between 200 and 599"));
+    }
+
+    // 2. If init["statusText"] is not the empty string and does not match the reason-phrase
+    //    token production, then throw a TypeError.
+    if let Some(ref status_text_value) = options.status_text {
+        // Validate status text contains only allowed characters (ASCII printable except CTL)
+        let status_text_std = status_text_value.to_std_string_escaped();
+        for ch in status_text_std.chars() {
+            if ch < ' ' || ch > '~' || ch == '\x7F' {
+                return Err(
+                    js_error!(TypeError: "Response statusText contains invalid characters"),
+                );
+            }
+        }
+    }
+
+    // 3. Set response's response's status to init["status"].
+    let status_code =
+        StatusCode::from_u16(status).map_err(|_| js_error!(RangeError: "Invalid status code"))?;
+
+    // 4. Set response's response's status message to init["statusText"].
+    let status_text = options.status_text.clone().unwrap_or_else(|| {
+        StatusCode::from_u16(status)
+            .ok()
+            .and_then(|s| s.canonical_reason())
+            .map_or_else(JsString::default, |s| JsString::from(s))
+    });
+
+    // 5. If init["headers"] exists, then fill response's headers with init["headers"].
+    let mut headers = options.headers.clone().unwrap_or_default();
+
+    // 6. If body is non-null, then:
+    let body_bytes = if let Some((body_data, body_type)) = body_with_type {
+        // 6.1. If response's status is a null body status, then throw a TypeError.
+        //
+        //      Note: 101 and 103 are included in null body status due to their use elsewhere.
+        //      They do not affect this step.
+        if matches!(status, 101 | 103 | 204 | 205 | 304) {
+            return Err(js_error!(TypeError: "Response with null body status cannot have a body"));
+        }
+
+        // 6.2. Set response's body to body's body.
+        // NOTE: In full implementation, the body should be a proper body structure
+        //       with stream, source, and length. Currently we only have the bytes.
+
+        // 6.3. If body's type is non-null and response's header list does not contain
+        //      `Content-Type`, then append (`Content-Type`, body's type) to response's header list.
+        if let Some(content_type) = body_type {
+            let has_content_type = headers.has(Convert::from("content-type".to_string()))?;
+            if !has_content_type {
+                headers.append(
+                    Convert::from("content-type".to_string()),
+                    Convert::from(content_type),
+                )?;
+            }
+        }
+
+        body_data
+    } else {
+        Vec::new()
+    };
+
+    Ok(JsResponse {
+        url: js_string!(""),
+        r#type: ResponseType::Basic,
+        status: Some(status_code),
+        status_text,
+        headers,
+        body: Rc::new(body_bytes),
+    })
+}
+
+/// Extract body bytes from a JsValue.
+///
+/// This implements the "extract" operation from the Fetch specification:
+/// https://fetch.spec.whatwg.org/#concept-bodyinit-extract
+///
+/// To extract a body with type from a byte sequence or BodyInit object, with an
+/// optional boolean keepalive (default false), run these steps:
+///
+/// # Errors
+///
+/// Returns an error if the body cannot be converted to bytes.
+///
+/// # Returns
+///
+/// Returns a tuple of (body bytes, optional Content-Type string).
+fn extract_body(body: JsValue, context: &mut Context) -> JsResult<(Vec<u8>, Option<String>)> {
+    // 1. Let stream be null.
+    // TODO: Implement ReadableStream support
+
+    // 2. If object is a ReadableStream object, then set stream to object.
+    // TODO: Implement ReadableStream detection and handling
+
+    // 3. Otherwise, if object is a Blob object, set stream to the result of running object's get stream.
+    // TODO: Implement Blob support
+
+    // 4. Otherwise, set stream to a new ReadableStream object, and set up stream with byte reading support.
+    // TODO: Implement ReadableStream creation
+
+    // 5. Assert: stream is a ReadableStream object.
+    // NOTE: Not applicable in simplified implementation
+
+    // 6. Let action be null.
+    // 7. Let source be null.
+    // 8. Let length be null.
+    // 9. Let type be null.
+
+    // 10. Switch on object:
+
+    // NOTE: Handle null/undefined (not explicitly in spec, but needed for JavaScript)
+    if body.is_null_or_undefined() {
+        return Ok((Vec::new(), None));
+    }
+
+    // Blob:
+    // - Set source to object.
+    // - Set length to object's size.
+    // - If object's type attribute is not the empty byte sequence, set type to its value.
+    // TODO: Implement Blob support
+
+    // byte sequence:
+    // - Set source to object.
+    // NOTE: Handled by BufferSource below
+
+    // BufferSource:
+    // - Set source to a copy of the bytes held by object.
+    if let Some(obj) = body.as_object() {
+        if let Ok(array) = JsUint8Array::from_object(obj.clone()) {
+            let data: Vec<u8> = array.iter(context).collect();
+            return Ok((data, None));
+        }
+        // TODO: Support other TypedArray types (Int8Array, Uint16Array, etc.)
+        // TODO: Support ArrayBuffer and DataView
+    }
+
+    // FormData:
+    // - Set action to this step: run the multipart/form-data encoding algorithm, with object's entry list and UTF-8.
+    // - Set source to object.
+    // - Set length to unclear, see html/6424 for improving this.
+    // - Set type to `multipart/form-data; boundary=`, followed by the multipart/form-data boundary string
+    //   generated by the multipart/form-data encoding algorithm.
+    // TODO: Implement FormData support
+
+    // URLSearchParams:
+    // - Set source to the result of running the application/x-www-form-urlencoded serializer with object's list.
+    // - Set type to `application/x-www-form-urlencoded;charset=UTF-8`.
+    // TODO: Implement URLSearchParams support
+
+    // scalar value string:
+    // - Set source to the UTF-8 encoding of object.
+    // - Set type to `text/plain;charset=UTF-8`.
+    if body.is_string() {
+        let string = body.to_string(context)?;
+        return Ok((
+            string.to_std_string_escaped().into_bytes(),
+            Some("text/plain;charset=UTF-8".to_string()),
+        ));
+    }
+
+    // ReadableStream:
+    // - If keepalive is true, then throw a TypeError.
+    // - If object is disturbed or locked, then throw a TypeError.
+    // TODO: Implement ReadableStream support
+
+    // 11. If source is a byte sequence, then set action to a step that returns source
+    // and length to source's length.
+    // NOTE: Handled implicitly by returning Vec<u8>
+
+    // 12. If action is non-null, then run these steps in parallel:
+    // - Run action.
+    // - Whenever one or more bytes are available and stream is not errored, enqueue the result of
+    //   creating a Uint8Array from the available bytes into stream.
+    // - When running action is done, close stream.
+    // TODO: Implement async stream processing
+
+    // 13. Let body be a body whose stream is stream, source is source, and length is length.
+    // 14. Return (body, type).
+    // NOTE: In this simplified implementation, we return (bytes, type).
+
+    // NOTE: Fallback - if it's an object, try to convert to string.
+    //       This is not part of spec but needed for JavaScript compatibility.
+    if body.is_object() {
+        let string = body.to_string(context)?;
+        return Ok((string.to_std_string_escaped().into_bytes(), None));
+    }
+
+    // NOTE: Final fallback - convert to string
+    let string = body.to_string(context)?;
+    Ok((string.to_std_string_escaped().into_bytes(), None))
 }

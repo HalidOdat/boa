@@ -155,3 +155,140 @@ fn response_getter() {
         }),
     ]);
 }
+
+#[test]
+fn response_constructor_basic() {
+    run_test_actions([
+        TestAction::harness(),
+        TestAction::inspect_context(|ctx| register(&[], ctx)),
+        TestAction::run(
+            r#"
+                const response = new Response("Hello, World!");
+                assertEq(response.status, 200);
+                assertEq(response.statusText, "OK");
+                assertEq(response.type, "basic");
+            "#,
+        ),
+    ]);
+}
+
+#[test]
+fn response_constructor_with_status() {
+    run_test_actions([
+        TestAction::harness(),
+        TestAction::inspect_context(|ctx| register(&[], ctx)),
+        TestAction::run(
+            r#"
+                const response = new Response("Not Found", { status: 404 });
+                assertEq(response.status, 404);
+                assertEq(response.statusText, "Not Found");
+            "#,
+        ),
+    ]);
+}
+
+#[test]
+fn response_constructor_with_status_text() {
+    run_test_actions([
+        TestAction::harness(),
+        TestAction::inspect_context(|ctx| register(&[], ctx)),
+        TestAction::run(
+            r#"
+                const response = new Response("OK", { status: 200, statusText: "Custom Status" });
+                assertEq(response.status, 200);
+                assertEq(response.statusText, "Custom Status");
+            "#,
+        ),
+    ]);
+}
+
+#[test]
+fn response_constructor_with_headers() {
+    run_test_actions([
+        TestAction::harness(),
+        TestAction::inspect_context(|ctx| register(&[], ctx)),
+        TestAction::run(
+            r#"
+                const response = new Response("OK", { 
+                    headers: { "Content-Type": "application/json" }
+                });
+                assertEq(response.headers.get("Content-Type"), "application/json");
+            "#,
+        ),
+    ]);
+}
+
+#[test]
+fn response_constructor_null_body() {
+    run_test_actions([
+        TestAction::harness(),
+        TestAction::inspect_context(|ctx| register(&[], ctx)),
+        TestAction::run(
+            r#"
+                const response = new Response(null);
+                assertEq(response.status, 200);
+            "#,
+        ),
+    ]);
+}
+
+#[test]
+fn response_constructor_invalid_status() {
+    run_test_actions([
+        TestAction::harness(),
+        TestAction::inspect_context(|ctx| register(&[], ctx)),
+        TestAction::run(
+            r#"
+                try {
+                    new Response("test", { status: 100 });
+                    throw new Error("Should have thrown RangeError");
+                } catch (e) {
+                    if (e.name !== "RangeError") {
+                        throw e;
+                    }
+                }
+            "#,
+        ),
+    ]);
+}
+
+#[test]
+fn response_constructor_null_body_status() {
+    run_test_actions([
+        TestAction::harness(),
+        TestAction::inspect_context(|ctx| register(&[], ctx)),
+        TestAction::run(
+            r#"
+                try {
+                    new Response("test", { status: 204 });
+                    throw new Error("Should have thrown TypeError");
+                } catch (e) {
+                    if (e.name !== "TypeError") {
+                        throw e;
+                    }
+                }
+            "#,
+        ),
+    ]);
+}
+
+#[test]
+fn response_constructor_body_text() {
+    run_test_actions([
+        TestAction::harness(),
+        TestAction::inspect_context(|ctx| register(&[], ctx)),
+        TestAction::run(
+            r#"
+                globalThis.response = (async () => {
+                    const response = new Response("Hello, World!");
+                    const text = await response.text();
+                    assertEq(text, "Hello, World!");
+                })();
+            "#,
+        ),
+        TestAction::inspect_context(|ctx| {
+            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
+            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+        }),
+    ]);
+}
