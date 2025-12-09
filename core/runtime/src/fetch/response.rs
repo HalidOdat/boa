@@ -314,7 +314,7 @@ fn initialize(
 
     // 6. If body is non-null, then:
     let body_bytes = if let Some((body_data, body_type)) = body_with_type {
-        // 6.1. If response's status is a null body status, then throw a TypeError.
+        // 1. If response's status is a null body status, then throw a TypeError.
         //
         //      Note: 101 and 103 are included in null body status due to their use elsewhere.
         //      They do not affect this step.
@@ -322,11 +322,11 @@ fn initialize(
             return Err(js_error!(TypeError: "Response with null body status cannot have a body"));
         }
 
-        // 6.2. Set response's body to body's body.
+        // 2. Set response's body to body's body.
         // NOTE: In full implementation, the body should be a proper body structure
         //       with stream, source, and length. Currently we only have the bytes.
 
-        // 6.3. If body's type is non-null and response's header list does not contain
+        // 3. If body's type is non-null and response's header list does not contain
         //      `Content-Type`, then append (`Content-Type`, body's type) to response's header list.
         if let Some(content_type) = body_type {
             let has_content_type = headers.has(Convert::from("content-type".to_string()))?;
