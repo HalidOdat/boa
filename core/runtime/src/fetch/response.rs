@@ -274,7 +274,7 @@ impl JsResponse {
 /// Returns an error if the response cannot be initialized.
 fn initialize(
     options: JsResponseOptions,
-    body_with_type: Option<(Vec<u8>, Option<String>)>,
+    body_with_type: Option<(Vec<u8>, Option<JsString>)>,
     _context: &mut Context,
 ) -> JsResult<JsResponse> {
     // 1. If init["status"] is not in the range 200 to 599, inclusive, then throw a RangeError.
@@ -333,7 +333,7 @@ fn initialize(
             if !has_content_type {
                 headers.append(
                     Convert::from("content-type".to_string()),
-                    Convert::from(content_type),
+                    Convert::from(content_type.to_std_string_escaped()),
                 )?;
             }
         }
@@ -368,7 +368,7 @@ fn initialize(
 /// # Returns
 ///
 /// Returns a tuple of (body bytes, optional Content-Type string).
-fn extract_body(body: JsValue, context: &mut Context) -> JsResult<(Vec<u8>, Option<String>)> {
+fn extract_body(body: JsValue, context: &mut Context) -> JsResult<(Vec<u8>, Option<JsString>)> {
     // 1. Let stream be null.
     // TODO: Implement ReadableStream support
 
@@ -437,7 +437,7 @@ fn extract_body(body: JsValue, context: &mut Context) -> JsResult<(Vec<u8>, Opti
         let string = body.to_string(context)?;
         return Ok((
             string.to_std_string_escaped().into_bytes(),
-            Some("text/plain;charset=UTF-8".to_string()),
+            Some(js_string!("text/plain;charset=UTF-8")),
         ));
     }
 
