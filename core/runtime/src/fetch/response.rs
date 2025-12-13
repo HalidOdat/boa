@@ -109,7 +109,7 @@ pub struct JsResponse {
     headers: JsHeaders,
 
     #[unsafe_ignore_trace]
-    body: Rc<Vec<u8>>,
+    body: Option<Rc<Vec<u8>>>,
 }
 
 impl JsResponse {
@@ -120,7 +120,11 @@ impl JsResponse {
         let status = Some(parts.status);
         let status_text = JsString::from(status.and_then(|s| s.canonical_reason()).unwrap_or(""));
         let headers = JsHeaders::from_http(parts.headers);
-        let body = Rc::new(body);
+        let body = if body.is_empty() {
+            None
+        } else {
+            Some(Rc::new(body))
+        };
 
         Self {
             url,
@@ -141,14 +145,105 @@ impl JsResponse {
             status: None,
             status_text: JsString::default(),
             headers: JsHeaders::default(),
-            body: Rc::new(Vec::new()),
+            body: None,
         }
     }
 
     /// Return a copy of the body.
     #[must_use]
-    pub fn body(&self) -> Rc<Vec<u8>> {
+    pub fn body(&self) -> Option<Rc<Vec<u8>>> {
         self.body.clone()
+    }
+
+    /// Initialize a response.
+    ///
+    /// This implements the "initialize a response" algorithm from the Fetch specification:
+    /// https://fetch.spec.whatwg.org/#initialize-a-response
+    ///
+    /// To initialize a response, given a Response object response, ResponseInit init,
+    /// and null or a body with type body:
+    ///
+    /// # Errors
+    /// Returns an error if the response cannot be initialized.
+    fn initialize(
+        options: JsResponseOptions,
+        body_with_type: Option<(Vec<u8>, Option<JsString>)>,
+        _context: &mut Context,
+    ) -> JsResult<JsResponse> {
+        // 1. If init["status"] is not in the range 200 to 599, inclusive, then throw a RangeError.
+        let status = options.status.unwrap_or(200);
+        if !(200..=599).contains(&status) {
+            return Err(js_error!(RangeError: "Response status must be between 200 and 599"));
+        }
+
+        // 2. If init["statusText"] is not the empty string and does not match the reason-phrase
+        //    token production, then throw a TypeError.
+        if let Some(ref status_text_value) = options.status_text {
+            // Validate status text contains only allowed characters (ASCII printable except CTL)
+            let status_text_std = status_text_value.to_std_string_escaped();
+            for ch in status_text_std.chars() {
+                if ch < ' ' || ch > '~' || ch == '\x7F' {
+                    return Err(
+                        js_error!(TypeError: "Response statusText contains invalid characters"),
+                    );
+                }
+            }
+        }
+
+        // 3. Set response's response's status to init["status"].
+        let status = StatusCode::from_u16(status)
+            .map_err(|_| js_error!(RangeError: "Invalid status code"))?;
+
+        // 4. Set response's response's status message to init["statusText"].
+        let status_text = options.status_text.clone().unwrap_or_else(|| {
+            status
+                .canonical_reason()
+                .map_or_else(JsString::default, JsString::from)
+        });
+
+        // 5. If init["headers"] exists, then fill response's headers with init["headers"].
+        let mut headers = options.headers.clone().unwrap_or_default();
+
+        // 6. If body is non-null, then:
+        let body = if let Some((body_data, body_type)) = body_with_type {
+            // 1. If response's status is a null body status, then throw a TypeError.
+            //
+            //      Note: 101 and 103 are included in null body status due to their use elsewhere.
+            //      They do not affect this step.
+            if matches!(status.as_u16(), 101 | 103 | 204 | 205 | 304) {
+                return Err(
+                    js_error!(TypeError: "Response with null body status cannot have a body"),
+                );
+            }
+
+            // 2. Set response's body to body's body.
+            let body = Some(Rc::new(body_data));
+
+            // 3. If body's type is non-null and response's header list does not contain
+            //      `Content-Type`, then append (`Content-Type`, body's type) to response's header list.
+            if let Some(content_type) = body_type {
+                let has_content_type = headers.has(Convert::from("content-type".to_string()))?;
+                if !has_content_type {
+                    headers.append(
+                        Convert::from("content-type".to_string()),
+                        Convert::from(content_type.to_std_string_escaped()),
+                    )?;
+                }
+            }
+
+            body
+        } else {
+            None
+        };
+
+        Ok(JsResponse {
+            url: js_string!(""),
+            r#type: ResponseType::Basic,
+            status: Some(status),
+            status_text,
+            headers,
+            body,
+        })
     }
 }
 
@@ -170,32 +265,32 @@ impl JsResponse {
         Self::error()
     }
 
+    /// [`new Response(body, init)`][spec]
+    ///
+    /// [spec]: https://fetch.spec.whatwg.org/#dom-response
     #[boa(constructor)]
     fn constructor(
         body: Option<JsValue>,
         options: Option<JsResponseOptions>,
         context: &mut Context,
     ) -> JsResult<Self> {
-        // Response constructor steps (https://fetch.spec.whatwg.org/#dom-response):
-        //
         // 1. Set this's response to a new response.
-        // NOTE: Implicit - we construct the JsResponse struct
+        // NOTE: Handled in initialize
 
         // 2. Set this's headers to a new Headers object with this's relevant realm,
         //    whose header list is this's response's header list and guard is "response".
         // NOTE: Handled in initialize
 
         // 3. Let bodyWithType be null.
-
         // 4. If body is non-null, then set bodyWithType to the result of extracting body.
-        let body_with_type = if let Some(body_value) = body {
+        let body_with_type = if let Some(body_value) = body.filter(|v| !v.is_null_or_undefined()) {
             Some(extract_body(body_value, context)?)
         } else {
             None
         };
 
         // 5. Perform initialize a response given this, init, and bodyWithType.
-        initialize(options.unwrap_or_default(), body_with_type, context)
+        Self::initialize(options.unwrap_or_default(), body_with_type, context)
     }
 
     #[boa(getter)]
@@ -226,7 +321,7 @@ impl JsResponse {
     }
 
     fn bytes(&self, context: &mut Context) -> JsPromise {
-        let body = self.body.clone();
+        let body = self.body.clone().unwrap_or_else(|| Rc::new(Vec::new()));
         JsPromise::from_async_fn(
             async move |context| {
                 JsUint8Array::from_iter(body.iter().copied(), &mut context.borrow_mut())
@@ -237,7 +332,7 @@ impl JsResponse {
     }
 
     fn text(&self, context: &mut Context) -> JsPromise {
-        let body = self.body.clone();
+        let body = self.body.clone().unwrap_or_else(|| Rc::new(Vec::new()));
         JsPromise::from_async_fn(
             async move |_| {
                 let body = String::from_utf8_lossy(body.as_ref());
@@ -248,7 +343,7 @@ impl JsResponse {
     }
 
     fn json(&self, context: &mut Context) -> JsPromise {
-        let body = self.body.clone();
+        let body = self.body.clone().unwrap_or_else(|| Rc::new(Vec::new()));
         JsPromise::from_async_fn(
             async move |context| {
                 let json_string = String::from_utf8_lossy(body.as_ref());
@@ -260,97 +355,6 @@ impl JsResponse {
             context,
         )
     }
-}
-
-/// Initialize a response.
-///
-/// This implements the "initialize a response" algorithm from the Fetch specification:
-/// https://fetch.spec.whatwg.org/#initialize-a-response
-///
-/// To initialize a response, given a Response object response, ResponseInit init,
-/// and null or a body with type body:
-///
-/// # Errors
-/// Returns an error if the response cannot be initialized.
-fn initialize(
-    options: JsResponseOptions,
-    body_with_type: Option<(Vec<u8>, Option<JsString>)>,
-    _context: &mut Context,
-) -> JsResult<JsResponse> {
-    // 1. If init["status"] is not in the range 200 to 599, inclusive, then throw a RangeError.
-    let status = options.status.unwrap_or(200);
-    if !(200..=599).contains(&status) {
-        return Err(js_error!(RangeError: "Response status must be between 200 and 599"));
-    }
-
-    // 2. If init["statusText"] is not the empty string and does not match the reason-phrase
-    //    token production, then throw a TypeError.
-    if let Some(ref status_text_value) = options.status_text {
-        // Validate status text contains only allowed characters (ASCII printable except CTL)
-        let status_text_std = status_text_value.to_std_string_escaped();
-        for ch in status_text_std.chars() {
-            if ch < ' ' || ch > '~' || ch == '\x7F' {
-                return Err(
-                    js_error!(TypeError: "Response statusText contains invalid characters"),
-                );
-            }
-        }
-    }
-
-    // 3. Set response's response's status to init["status"].
-    let status_code =
-        StatusCode::from_u16(status).map_err(|_| js_error!(RangeError: "Invalid status code"))?;
-
-    // 4. Set response's response's status message to init["statusText"].
-    let status_text = options.status_text.clone().unwrap_or_else(|| {
-        StatusCode::from_u16(status)
-            .ok()
-            .and_then(|s| s.canonical_reason())
-            .map_or_else(JsString::default, |s| JsString::from(s))
-    });
-
-    // 5. If init["headers"] exists, then fill response's headers with init["headers"].
-    let mut headers = options.headers.clone().unwrap_or_default();
-
-    // 6. If body is non-null, then:
-    let body_bytes = if let Some((body_data, body_type)) = body_with_type {
-        // 1. If response's status is a null body status, then throw a TypeError.
-        //
-        //      Note: 101 and 103 are included in null body status due to their use elsewhere.
-        //      They do not affect this step.
-        if matches!(status, 101 | 103 | 204 | 205 | 304) {
-            return Err(js_error!(TypeError: "Response with null body status cannot have a body"));
-        }
-
-        // 2. Set response's body to body's body.
-        // NOTE: In full implementation, the body should be a proper body structure
-        //       with stream, source, and length. Currently we only have the bytes.
-
-        // 3. If body's type is non-null and response's header list does not contain
-        //      `Content-Type`, then append (`Content-Type`, body's type) to response's header list.
-        if let Some(content_type) = body_type {
-            let has_content_type = headers.has(Convert::from("content-type".to_string()))?;
-            if !has_content_type {
-                headers.append(
-                    Convert::from("content-type".to_string()),
-                    Convert::from(content_type.to_std_string_escaped()),
-                )?;
-            }
-        }
-
-        body_data
-    } else {
-        Vec::new()
-    };
-
-    Ok(JsResponse {
-        url: js_string!(""),
-        r#type: ResponseType::Basic,
-        status: Some(status_code),
-        status_text,
-        headers,
-        body: Rc::new(body_bytes),
-    })
 }
 
 /// Extract body bytes from a JsValue.
@@ -382,7 +386,7 @@ fn extract_body(body: JsValue, context: &mut Context) -> JsResult<(Vec<u8>, Opti
     // TODO: Implement ReadableStream creation
 
     // 5. Assert: stream is a ReadableStream object.
-    // NOTE: Not applicable in simplified implementation
+    // TODO: Implement ReadableStream creation
 
     // 6. Let action be null.
     // 7. Let source be null.
@@ -390,11 +394,6 @@ fn extract_body(body: JsValue, context: &mut Context) -> JsResult<(Vec<u8>, Opti
     // 9. Let type be null.
 
     // 10. Switch on object:
-
-    // NOTE: Handle null/undefined (not explicitly in spec, but needed for JavaScript)
-    if body.is_null_or_undefined() {
-        return Ok((Vec::new(), None));
-    }
 
     // Blob:
     // - Set source to object.

@@ -34,7 +34,7 @@ fn request_constructor() {
                     .and_then(|o| o.downcast_ref::<JsResponse>())
                     .unwrap()
                     .body()
-                    .as_ref()
+                    .unwrap()
                     .as_slice(),
                 "Hello World".as_bytes()
             );

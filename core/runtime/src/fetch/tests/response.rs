@@ -1,4 +1,5 @@
 use super::TestFetcher;
+use crate::fetch::response::JsResponse;
 use crate::test::{TestAction, run_test_actions};
 use boa_engine::{Context, js_str};
 use http::{Response, Uri};
@@ -55,6 +56,55 @@ fn response_text() {
         TestAction::inspect_context(|ctx| {
             let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
             response.as_promise().unwrap().await_blocking(ctx).unwrap();
+        }),
+    ]);
+}
+
+#[test]
+fn response_constructor_null_body_internal() {
+    run_test_actions([
+        TestAction::harness(),
+        TestAction::inspect_context(|ctx| register(&[], ctx)),
+        TestAction::run(
+            r#"
+                globalThis.response1 = new Response(null);
+                globalThis.response2 = new Response(undefined);
+                globalThis.response3 = new Response();
+            "#,
+        ),
+        TestAction::inspect_context(|ctx| {
+            let response1 = ctx.global_object().get(js_str!("response1"), ctx).unwrap();
+            let body1 = response1
+                .as_object()
+                .as_ref()
+                .and_then(|o| o.downcast_ref::<JsResponse>())
+                .map(|r| r.body());
+            assert!(
+                body1.unwrap().is_none(),
+                "Response with null body should have None"
+            );
+
+            let response2 = ctx.global_object().get(js_str!("response2"), ctx).unwrap();
+            let body2 = response2
+                .as_object()
+                .as_ref()
+                .and_then(|o| o.downcast_ref::<JsResponse>())
+                .map(|r| r.body());
+            assert!(
+                body2.unwrap().is_none(),
+                "Response with undefined body should have None"
+            );
+
+            let response3 = ctx.global_object().get(js_str!("response3"), ctx).unwrap();
+            let body3 = response3
+                .as_object()
+                .as_ref()
+                .and_then(|o| o.downcast_ref::<JsResponse>())
+                .map(|r| r.body());
+            assert!(
+                body3.unwrap().is_none(),
+                "Response with no body should have None"
+            );
         }),
     ]);
 }
