@@ -17,9 +17,36 @@ use std::cell::{OnceCell, RefCell};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 mod fetcher;
 mod logger;
+mod server;
+
+/// Global WPT server instance.
+static WPT_SERVER: OnceLock<Arc<Mutex<Option<server::WptServer>>>> = OnceLock::new();
+
+/// Get or start the WPT server.
+fn get_wpt_server(wpt_path: &Path) -> String {
+    let server_lock = WPT_SERVER.get_or_init(|| Arc::new(Mutex::new(None)));
+    let mut server_guard = server_lock.lock().unwrap();
+    
+    if server_guard.is_none() {
+        match server::WptServer::start(wpt_path, 8000) {
+            Ok(server) => {
+                let host = server.host();
+                eprintln!("Started WPT server at {}", host);
+                *server_guard = Some(server);
+            }
+            Err(e) => {
+                eprintln!("Failed to start WPT server: {}", e);
+                return "127.0.0.1:8000".to_string();
+            }
+        }
+    }
+    
+    server_guard.as_ref().unwrap().host()
+}
 
 /// The test status JavaScript type from WPT. This is defined in the test harness.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,9 +205,9 @@ fn create_context(wpt_path: &Path) -> (Context, logger::RecordingLogger, fetcher
         logger::RecordingLogger::new(NullLogger)
     };
 
-    let fetcher = fetcher::WptFetcher::new(wpt_path, "web-platform.test:8000".to_string());
-    boa_runtime::register(
-        (
+    let fetcher_host = if std::env::var("WPT_SERVER").is_ok() { get_wpt_server(wpt_path) } else { "web-platform.test:8000".to_string() };
+    let fetcher = fetcher::WptFetcher::new(wpt_path, fetcher_host);
+    boa_runtime::register((
             boa_runtime::extensions::ConsoleExtension(logger.clone()),
             boa_runtime::extensions::FetchExtension(fetcher.clone()),
         ),
@@ -429,7 +456,7 @@ fn url(
 
 /// Test the `fetch` with the WPT test suite.
 #[cfg(not(clippy))]
-#[ignore] // This is nowhere near ready for production. It also requires a web-server.
+// The server is automatically started when WPT_SERVER env var is set.
 #[rstest::rstest]
 fn fetch(
     #[base_dir = "${WPT_ROOT}"]
@@ -437,5 +464,6 @@ fn fetch(
     #[exclude("idlharness")]
     path: PathBuf,
 ) {
+    std::env::set_var("WPT_SERVER", "1");
     execute_test_file(&path);
 }
