@@ -103,7 +103,7 @@ fn main() -> JsResult<()> {
             assert_eq!(v, JsValue::undefined())
         }
         PromiseState::Rejected(err) => {
-            panic!("{}", err.display());
+            panic!("{}", err);
         }
     }
 

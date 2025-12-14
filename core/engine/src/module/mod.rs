@@ -47,8 +47,7 @@ use crate::bytecompiler::ToJsString;
 use crate::object::TypedJsFunction;
 use crate::spanned_source_text::SourceText;
 use crate::{
-    Context, HostDefined, JsError, JsNativeError, JsResult, JsString, JsValue, NativeFunction,
-    builtins,
+    Context, HostDefined, JsNativeError, JsResult, JsString, JsValue, NativeFunction, builtins,
     builtins::promise::{PromiseCapability, PromiseState},
     environments::DeclarativeEnvironment,
     object::{JsObject, JsPromise},
@@ -604,7 +603,7 @@ impl Module {
                     PromiseState::Fulfilled(_) => Ok(index),
                     // c. If promise.[[PromiseState]] is rejected, then
                     //    i. Return ThrowCompletion(promise.[[PromiseResult]]).
-                    PromiseState::Rejected(err) => Err(JsError::from_opaque(err)),
+                    PromiseState::Rejected(err) => Err(err),
                 }
             }
         }
@@ -950,7 +949,7 @@ fn can_throw_exception() {
     // Checking if the final promise didn't return an error.
     assert_eq!(
         promise_result.state().as_rejected(),
-        Some(&js_string!("from javascript").into())
+        Some(&JsError::from_opaque(js_string!("from javascript").into()))
     );
 }
 

@@ -41,7 +41,7 @@ fn subdirectories() {
             assert_eq!(foo_value, js_string!("file1..file1_1.file1_2").into());
         }
         PromiseState::Rejected(reason) => {
-            panic!("Module failed to load: {}", reason.display());
+            panic!("Module failed to load: {}", reason);
         }
     }
 }

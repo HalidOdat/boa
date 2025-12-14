@@ -204,7 +204,10 @@ impl SourcePath {
 /// If the `native-backtrace` feature is not enabled the this becomes [zero sized type][zst].
 ///
 /// [zst]: https://doc.rust-lang.org/nomicon/exotic-sizes.html#zero-sized-types-zsts
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Finalize, Trace)]
+// SAFETY: `NativeSourceInfo` contains only either a `'static` reference or a `PhantomData`,
+// neither of which can contain GC-managed pointers.
+#[boa_gc(unsafe_empty_trace)]
 pub struct NativeSourceInfo {
     #[cfg(feature = "native-backtrace")]
     inner: &'static std::panic::Location<'static>,

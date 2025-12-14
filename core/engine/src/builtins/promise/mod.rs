@@ -39,13 +39,14 @@ pub enum PromiseState {
     /// The promise was fulfilled with a success value.
     Fulfilled(JsValue),
     /// The promise was rejected with a failure reason.
-    Rejected(JsValue),
+    Rejected(JsError),
 }
 
 unsafe impl Trace for PromiseState {
     custom_trace!(this, mark, {
         match this {
-            Self::Fulfilled(v) | Self::Rejected(v) => mark(v),
+            Self::Fulfilled(v) => mark(v),
+            Self::Rejected(e) => mark(e),
             Self::Pending => {}
         }
     });
@@ -62,12 +63,12 @@ impl PromiseState {
         }
     }
 
-    /// Gets the inner `JsValue` of a rejected promise state, or returns `None` if
+    /// Gets the inner `JsError` of a rejected promise state, or returns `None` if
     /// the state is not `Rejected`.
     #[must_use]
-    pub const fn as_rejected(&self) -> Option<&JsValue> {
+    pub const fn as_rejected(&self) -> Option<&JsError> {
         match self {
-            Self::Rejected(v) => Some(v),
+            Self::Rejected(e) => Some(e),
             _ => None,
         }
     }
@@ -1896,7 +1897,14 @@ impl Promise {
                 }
 
                 //   d. Let rejectJob be NewPromiseReactionJob(rejectReaction, reason).
-                let reject_job = new_promise_reaction_job(reject_reaction, reason.clone(), context);
+                let reject_job = new_promise_reaction_job(
+                    reject_reaction,
+                    reason
+                        .as_opaque()
+                        .expect("rejected promises always have opaque errors")
+                        .clone(),
+                    context,
+                );
 
                 //   e. Perform HostEnqueuePromiseJob(rejectJob.[[Job]], rejectJob.[[Realm]]).
                 context
@@ -2034,7 +2042,7 @@ impl Promise {
         /// # Panics
         ///
         /// Panics if `Promise` is not pending.
-        fn reject_promise(promise: &JsObject<Promise>, reason: JsValue, context: &mut Context) {
+        fn reject_promise(promise: &JsObject<Promise>, reason: JsError, context: &mut Context) {
             let handled = {
                 let mut promise = promise.borrow_mut();
                 let promise = promise.data_mut();
@@ -2055,7 +2063,13 @@ impl Promise {
                 promise.fulfill_reactions.clear();
 
                 // 8. Perform TriggerPromiseReactions(reactions, reason).
-                trigger_promise_reactions(reactions, &reason, context);
+                trigger_promise_reactions(
+                    reactions,
+                    reason
+                        .as_opaque()
+                        .expect("rejected promises always have opaque errors"),
+                    context,
+                );
 
                 // 3. Set promise.[[PromiseResult]] to reason.
                 // 6. Set promise.[[PromiseState]] to rejected.
@@ -2107,10 +2121,10 @@ impl Promise {
                         //   a. Let selfResolutionError be a newly created TypeError object.
                         let self_resolution_error = JsNativeError::typ()
                             .with_message("SameValue(resolution, promise) is true")
-                            .into_opaque(context);
+                            .into();
 
                         //   b. Perform RejectPromise(promise, selfResolutionError).
-                        reject_promise(&promise, self_resolution_error.into(), context);
+                        reject_promise(&promise, self_resolution_error, context);
 
                         //   c. Return undefined.
                         return Ok(JsValue::undefined());
@@ -2130,7 +2144,7 @@ impl Promise {
                         // 10. If then is an abrupt completion, then
                         Err(e) => {
                             //   a. Perform RejectPromise(promise, then.[[Value]]).
-                            reject_promise(&promise, e.into_opaque(context)?, context);
+                            reject_promise(&promise, e, context);
 
                             //   b. Return undefined.
                             return Ok(JsValue::undefined());
@@ -2198,7 +2212,11 @@ impl Promise {
                     };
 
                     // 7. Perform RejectPromise(promise, reason).
-                    reject_promise(&promise, args.get_or_undefined(0).clone(), context);
+                    reject_promise(
+                        &promise,
+                        JsError::from_opaque(args.get_or_undefined(0).clone()),
+                        context,
+                    );
 
                     // 8. Return undefined.
                     Ok(JsValue::undefined())

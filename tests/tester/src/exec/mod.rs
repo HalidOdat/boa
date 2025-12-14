@@ -299,19 +299,17 @@ impl Test {
                         }
                         PromiseState::Fulfilled(v) => v,
                         PromiseState::Rejected(err) => {
-                            let output = JsError::from_opaque(err.clone())
-                                .try_native(context)
-                                .map_or_else(
-                                    |_| format!("Uncaught {}", err.display()),
-                                    |err| {
-                                        format!(
-                                            "Uncaught {err}{}",
-                                            err.cause().map_or_else(String::new, |cause| format!(
-                                                "\n  caused by {cause}"
-                                            ))
-                                        )
-                                    },
-                                );
+                            let output = err.try_native(context).map_or_else(
+                                |_| format!("Uncaught {err}"),
+                                |err| {
+                                    format!(
+                                        "Uncaught {err}{}",
+                                        err.cause().map_or_else(String::new, |cause| format!(
+                                            "\n  caused by {cause}"
+                                        ))
+                                    )
+                                },
+                            );
 
                             return (false, output);
                         }
@@ -404,7 +402,6 @@ impl Test {
                         // Try to link to see if the resolution error shows there.
                     }
                     PromiseState::Rejected(err) => {
-                        let err = JsError::from_opaque(err);
                         return (
                             is_error_type(&err, error_type, context),
                             format!("Uncaught {err}"),
@@ -449,7 +446,7 @@ impl Test {
                         }
                         PromiseState::Fulfilled(_) => {}
                         PromiseState::Rejected(err) => {
-                            return (false, format!("Uncaught {}", err.display()));
+                            return (false, format!("Uncaught {}", err));
                         }
                     }
 
@@ -471,7 +468,7 @@ impl Test {
                             return (false, "module didn't try to evaluate".to_string());
                         }
                         PromiseState::Fulfilled(val) => return (false, val.display().to_string()),
-                        PromiseState::Rejected(err) => JsError::from_opaque(err),
+                        PromiseState::Rejected(err) => err,
                     }
                 } else {
                     context.strict(strict);

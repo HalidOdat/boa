@@ -9,7 +9,7 @@ use boa_engine::builtins::promise::PromiseState;
 use boa_engine::module::{SimpleModuleLoader, SyntheticModuleInitializer};
 use boa_engine::object::FunctionObjectBuilder;
 use boa_engine::{
-    Context, JsArgs, JsError, JsNativeError, JsValue, Module, NativeFunction, Source, js_string,
+    Context, JsArgs, JsNativeError, JsValue, Module, NativeFunction, Source, js_string,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             assert_eq!(v, JsValue::undefined());
         }
         PromiseState::Rejected(err) => {
-            return Err(JsError::from_opaque(err).try_native(context)?.into());
+            return Err(err.try_native(context)?.into());
         }
     }
 

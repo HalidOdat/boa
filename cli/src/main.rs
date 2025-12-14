@@ -370,7 +370,7 @@ fn evaluate_file(
             PromiseState::Pending => Err(eyre!("module didn't execute")),
             PromiseState::Fulfilled(_) => Ok(()),
             PromiseState::Rejected(err) => {
-                return Err(JsError::from_opaque(err).into_erased(context).into());
+                return Err(err.into_erased(context).into());
             }
         };
     }

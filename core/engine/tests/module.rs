@@ -47,7 +47,7 @@ fn test_json_module_from_str() {
             assert!(v.is_undefined());
         }
         PromiseState::Rejected(e) => {
-            panic!("Unexpected error: {:?}", e.to_string(&mut context).unwrap());
+            panic!("Unexpected error: {e}");
         }
     }
 
@@ -135,10 +135,7 @@ fn test_json_module_dynamic_import() {
             );
         }
         PromiseState::Rejected(e) => {
-            panic!(
-                "Dynamic import failed: {:?}",
-                e.to_string(&mut context).unwrap()
-            );
+            panic!("Dynamic import failed: {e:?}");
         }
         PromiseState::Pending => panic!("Dynamic import is still pending"),
     }
@@ -298,7 +295,12 @@ fn test_dynamic_import_invalid_options() {
 
     match p_obj.state() {
         PromiseState::Rejected(e) => {
-            let error = e.as_object().unwrap();
+            let error = e
+                .clone()
+                .into_opaque(&mut context)
+                .ok()
+                .and_then(|v| v.as_object())
+                .unwrap();
             let name = error.get(js_string!("name"), &mut context).unwrap();
             assert_eq!(name.as_string().unwrap(), js_string!("TypeError"));
         }
@@ -350,7 +352,12 @@ fn test_dynamic_import_non_string_attribute_value() {
 
     match p_obj.state() {
         PromiseState::Rejected(e) => {
-            let error = e.as_object().unwrap();
+            let error = e
+                .clone()
+                .into_opaque(&mut context)
+                .ok()
+                .and_then(|v| v.as_object())
+                .unwrap();
             let name = error.get(js_string!("name"), &mut context).unwrap();
             assert_eq!(name.as_string().unwrap(), js_string!("TypeError"));
             let message = error.get(js_string!("message"), &mut context).unwrap();
@@ -433,10 +440,7 @@ fn test_dynamic_import_symbol_key() {
             );
         }
         PromiseState::Rejected(e) => {
-            panic!(
-                "Dynamic import failed: {:?}",
-                e.to_string(&mut context).unwrap()
-            );
+            panic!("Dynamic import failed: {e:?}");
         }
         PromiseState::Pending => panic!("Dynamic import is still pending"),
     }

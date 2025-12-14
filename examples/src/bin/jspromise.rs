@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("All promises fulfilled with: {}", value.display());
         }
         PromiseState::Rejected(error) => {
-            println!("One of the promises rejected with: {}", error.display());
+            println!("One of the promises rejected with: {}", error);
         }
         PromiseState::Pending => {
             println!("Promises are still pending");
@@ -122,7 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Future resolved with: {}", value.display());
         }
         PromiseState::Rejected(error) => {
-            println!("Future rejected with: {}", error.display());
+            println!("Future rejected with: {}", error);
         }
         PromiseState::Pending => {
             println!("Future is still pending");
@@ -144,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("First fulfilled promise value: {}", value.display());
         }
         PromiseState::Rejected(error) => {
-            println!("All promises rejected with: {}", error.display());
+            println!("All promises rejected with: {}", error);
         }
         PromiseState::Pending => {
             println!("Promises are still pending");

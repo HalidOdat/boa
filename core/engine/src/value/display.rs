@@ -1,6 +1,6 @@
 use super::{Display, HashSet, JsValue, JsVariant, fmt};
 use crate::{
-    JsError, JsObject, JsString,
+    JsObject, JsString,
     builtins::{
         Array, Promise, error::Error, map::ordered_map::OrderedMap, promise::PromiseState,
         set::ordered_set::OrderedSet,
@@ -267,7 +267,7 @@ pub(crate) fn log_value_to(
                     PromiseState::Pending => f.write_str("<pending>")?,
                     PromiseState::Fulfilled(val) => Display::fmt(&val.display(), f)?,
                     PromiseState::Rejected(reason) => {
-                        write!(f, "<rejected> {}", JsError::from_opaque(reason.clone()))?;
+                        write!(f, "<rejected> {reason}")?;
                     }
                 }
                 f.write_str(" }")

@@ -12,16 +12,15 @@ use crate::{
     realm::Realm,
     vm::{
         NativeSourceInfo,
-        shadow_stack::{Backtrace, ShadowEntry},
+        shadow_stack::{Backtrace, ErasedBacktrace, ErasedShadowEntry, ShadowEntry},
     },
 };
 use boa_gc::{Finalize, Trace, custom_trace};
-use std::{
-    borrow::Cow,
-    error,
-    fmt::{self},
-};
+use std::{borrow::Cow, error, fmt};
 use thiserror::Error;
+
+#[cfg(test)]
+mod tests;
 
 /// Create an error object from a value or string literal. Optionally the
 /// first argument of the macro can be a type of error (such as `TypeError`,
@@ -644,7 +643,8 @@ impl JsError {
     ///
     /// let erased_error = native_error.into_erased(context);
     ///
-    /// assert_eq!(erased_error.to_string(), "TypeError: invalid type!");
+    /// // The erased error now includes position information like the original
+    /// assert!(erased_error.to_string().starts_with("TypeError: invalid type!"));
     ///
     /// let send_sync_error: Box<dyn Error + Send + Sync> = Box::new(erased_error);
     ///
@@ -654,16 +654,25 @@ impl JsError {
     /// );
     /// ```
     pub fn into_erased(self, context: &mut Context) -> JsErasedError {
+        let backtrace = self
+            .backtrace
+            .as_ref()
+            .map_or_else(ErasedBacktrace::default, Backtrace::as_erased);
+
         let native = match self.try_native(context) {
             Ok(native) => native,
             Err(TryNativeError::EngineError { source }) => {
                 return JsErasedError {
                     inner: ErasedRepr::Engine(source),
+                    backtrace: IgnoreEq(backtrace),
+                    position: IgnoreEq(None),
                 };
             }
             Err(_) => {
                 return JsErasedError {
                     inner: ErasedRepr::Opaque(Cow::Owned(self.to_string())),
+                    backtrace: IgnoreEq(backtrace),
+                    position: IgnoreEq(None),
                 };
             }
         };
@@ -672,10 +681,45 @@ impl JsError {
             kind,
             message,
             cause,
+            position,
             ..
         } = native;
 
         let cause = cause.map(|err| Box::new(err.into_erased(context)));
+
+        let position = position.0.map(|entry| match entry {
+            ShadowEntry::Native {
+                function_name,
+                source_info,
+            } => {
+                let name = function_name
+                    .as_ref()
+                    .map(|n| n.to_std_string_escaped().into_boxed_str());
+                ErasedShadowEntry::Native {
+                    function_name: name,
+                    source_info,
+                }
+            }
+            ShadowEntry::Bytecode { pc, source_info } => {
+                let name = if source_info.function_name().is_empty() {
+                    None
+                } else {
+                    Some(
+                        source_info
+                            .function_name()
+                            .to_std_string_escaped()
+                            .into_boxed_str(),
+                    )
+                };
+                let path = source_info.map().path().to_string().into_boxed_str();
+                let position = source_info.map().find(pc);
+                ErasedShadowEntry::Bytecode {
+                    function_name: name,
+                    path,
+                    position,
+                }
+            }
+        });
 
         let kind = match kind {
             JsNativeErrorKind::Aggregate(errors) => JsErasedNativeErrorKind::Aggregate(
@@ -699,6 +743,8 @@ impl JsError {
                 message,
                 cause,
             }),
+            backtrace: IgnoreEq(backtrace),
+            position: IgnoreEq(position),
         }
     }
 
@@ -821,6 +867,13 @@ impl fmt::Display for JsError {
 /// Helper struct that ignores equality operator.
 #[derive(Debug, Clone, Finalize)]
 pub(crate) struct IgnoreEq<T>(pub(crate) T);
+
+// SAFETY: Trace is safe to ignore for this type as it wraps only trace-safe types.
+unsafe impl<T: Trace> Trace for IgnoreEq<T> {
+    custom_trace!(this, mark, {
+        mark(&this.0);
+    });
+}
 
 impl<T> Eq for IgnoreEq<T> {}
 
@@ -1507,6 +1560,8 @@ impl fmt::Display for JsNativeErrorKind {
 #[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
 pub struct JsErasedError {
     inner: ErasedRepr,
+    backtrace: IgnoreEq<ErasedBacktrace>,
+    position: IgnoreEq<Option<ErasedShadowEntry>>,
 }
 
 #[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
@@ -1522,7 +1577,19 @@ impl fmt::Display for JsErasedError {
             ErasedRepr::Native(e) => e.fmt(f),
             ErasedRepr::Opaque(v) => v.fmt(f),
             ErasedRepr::Engine(e) => e.fmt(f),
+        }?;
+
+        if let Some(position) = &self.position.0 {
+            let position_str = format!("{}", position.display(false));
+            if !position_str.is_empty() {
+                write!(f, " ({position_str})")?;
+            }
         }
+
+        for entry in self.backtrace.0.iter().rev() {
+            write!(f, "\n    at {}", entry.display(true))?;
+        }
+        Ok(())
     }
 }
 
