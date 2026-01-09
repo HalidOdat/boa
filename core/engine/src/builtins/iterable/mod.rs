@@ -1,15 +1,15 @@
 //! Boa's implementation of ECMAScript's `IteratorRecord` and iterator prototype objects.
 
 use crate::{
-    Context, JsArgs, JsData, JsResult, JsString, JsValue,
     builtins::{BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
     js_string,
-    object::{JsObject, internal_methods::get_prototype_from_constructor},
+    object::{internal_methods::get_prototype_from_constructor, JsObject},
     realm::Realm,
     string::StaticJsStrings,
     symbol::JsSymbol,
+    Context, JsArgs, JsData, JsResult, JsString, JsValue,
 };
 use boa_gc::{Finalize, Trace};
 
@@ -420,6 +420,7 @@ impl IntrinsicObject for WrapForValidIteratorPrototype {
                     .iterator_prototypes()
                     .iterator(),
             )
+            .static_method(Self::next, js_string!("next"), 0)
             .build();
     }
 
@@ -428,6 +429,39 @@ impl IntrinsicObject for WrapForValidIteratorPrototype {
             .objects()
             .iterator_prototypes()
             .wrap_for_valid_iterator()
+    }
+}
+
+impl WrapForValidIteratorPrototype {
+    /// `%WrapForValidIteratorPrototype%.next ( )`
+    ///
+    /// More information:
+    ///  - [ECMA reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-%wrapforvaliditeratorprototype%.next
+    pub(crate) fn next(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be this value.
+        // 2. Perform ? RequireInternalSlot(O, [[Iterated]]).
+        let o = this
+            .as_object()
+            .ok_or_else(|| JsNativeError::typ().with_message("`this` is not an object"))?;
+
+        let wrap = o.downcast_mut::<WrapForValidIterator>().ok_or_else(|| {
+            JsNativeError::typ().with_message("`this` does not have a [[Iterated]] internal slot")
+        })?;
+
+        // 3. Let iteratorRecord be O.[[Iterated]].
+        let iterator_record = wrap.iterated.clone();
+        drop(wrap);
+
+        // 4. Return ? Call(iteratorRecord.[[NextMethod]], iteratorRecord.[[Iterator]]).
+        let result = iterator_record
+            .next_method()
+            .as_callable()
+            .ok_or_else(|| JsNativeError::typ().with_message("next method is not callable"))?
+            .call(&iterator_record.iterator().clone().into(), &[], context)?;
+
+        Ok(result)
     }
 }
 
