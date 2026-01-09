@@ -94,7 +94,7 @@ use crate::{
         error::r#type::ThrowTypeError,
         generator::Generator,
         generator_function::GeneratorFunction,
-        iterable::{AsyncFromSyncIterator, AsyncIterator, Iterator},
+        iterable::{AsyncFromSyncIterator, AsyncIterator, Iterator, WrapForValidIteratorPrototype},
         map::MapIterator,
         object::for_in_iterator::ForInIterator,
         regexp::RegExpStringIterator,
@@ -242,6 +242,7 @@ impl Realm {
         Iterator::init(self);
         AsyncIterator::init(self);
         AsyncFromSyncIterator::init(self);
+        WrapForValidIteratorPrototype::init(self);
         ForInIterator::init(self);
         Math::init(self);
         Json::init(self);

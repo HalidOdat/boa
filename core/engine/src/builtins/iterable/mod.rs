@@ -1,7 +1,7 @@
 //! Boa's implementation of ECMAScript's `IteratorRecord` and iterator prototype objects.
 
 use crate::{
-    Context, JsArgs, JsResult, JsString, JsValue,
+    Context, JsArgs, JsData, JsResult, JsString, JsValue,
     builtins::{BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
@@ -71,6 +71,9 @@ pub struct IteratorPrototypes {
     /// The `ForInIteratorPrototype` prototype object.
     for_in: JsObject,
 
+    /// The `%WrapForValidIteratorPrototype%` prototype object.
+    wrap_for_valid_iterator: JsObject,
+
     /// The `%SegmentIteratorPrototype%` prototype object.
     #[cfg(feature = "intl")]
     segment: JsObject,
@@ -88,6 +91,7 @@ impl Default for IteratorPrototypes {
             regexp_string: JsObject::with_null_proto(),
             map: JsObject::with_null_proto(),
             for_in: JsObject::with_null_proto(),
+            wrap_for_valid_iterator: JsObject::with_null_proto(),
             #[cfg(feature = "intl")]
             segment: JsObject::with_null_proto(),
         }
@@ -156,6 +160,13 @@ impl IteratorPrototypes {
     #[must_use]
     pub fn for_in(&self) -> JsObject {
         self.for_in.clone()
+    }
+
+    /// Returns the `%WrapForValidIteratorPrototype%` object.
+    #[inline]
+    #[must_use]
+    pub fn wrap_for_valid_iterator(&self) -> JsObject {
+        self.wrap_for_valid_iterator.clone()
     }
 
     /// Returns the `%SegmentIteratorPrototype%` object.
@@ -350,9 +361,73 @@ impl Iterator {
         // 5. Let wrapper be OrdinaryObjectCreate(%WrapForValidIteratorPrototype%, « [[Iterated]] »).
         // 6. Set wrapper.[[Iterated]] to iteratorRecord.
         // 7. Return wrapper.
-        // TODO: Implement WrapForValidIteratorPrototype for full spec compliance.
-        // For now, we return the iterator directly which works for basic iteration.
-        Ok(iterator_record.iterator().clone().into())
+        let wrap_proto = context
+            .intrinsics()
+            .objects()
+            .iterator_prototypes()
+            .wrap_for_valid_iterator();
+        let wrapper = JsObject::from_proto_and_data_with_shared_shape(
+            context.root_shape(),
+            wrap_proto,
+            WrapForValidIterator::new(iterator_record),
+        );
+        Ok(wrapper.into())
+    }
+}
+
+/// The `WrapForValidIterator` object.
+///
+/// This object wraps an iterator to ensure it conforms to the Iterator interface.
+///
+/// More information:
+///  - [ECMA reference][spec]
+///
+/// [spec]: https://tc39.es/ecma262/#sec-wrapforvaliditeratorprototype-object
+#[derive(Debug, Clone, Finalize, Trace, JsData)]
+pub(crate) struct WrapForValidIterator {
+    /// The `[[Iterated]]` internal slot.
+    #[unsafe_ignore_trace]
+    iterated: IteratorRecord,
+}
+
+impl WrapForValidIterator {
+    /// Creates a new `WrapForValidIterator`.
+    pub(crate) fn new(iterated: IteratorRecord) -> Self {
+        Self { iterated }
+    }
+
+    /// Gets the iterator record.
+    pub(crate) fn iterated(&self) -> &IteratorRecord {
+        &self.iterated
+    }
+}
+
+/// `%WrapForValidIteratorPrototype%` object.
+///
+/// More information:
+///  - [ECMA reference][spec]
+///
+/// [spec]: https://tc39.es/ecma262/#sec-wrapforvaliditeratorprototype-object
+pub(crate) struct WrapForValidIteratorPrototype;
+
+impl IntrinsicObject for WrapForValidIteratorPrototype {
+    fn init(realm: &Realm) {
+        BuiltInBuilder::with_intrinsic::<Self>(realm)
+            .prototype(
+                realm
+                    .intrinsics()
+                    .objects()
+                    .iterator_prototypes()
+                    .iterator(),
+            )
+            .build();
+    }
+
+    fn get(intrinsics: &Intrinsics) -> JsObject {
+        intrinsics
+            .objects()
+            .iterator_prototypes()
+            .wrap_for_valid_iterator()
     }
 }
 
