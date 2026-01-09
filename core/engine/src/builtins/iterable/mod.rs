@@ -226,14 +226,14 @@ pub(crate) fn get_iterator_flattenable(
     // 2. Let method be ? GetMethod(obj, @@iterator).
     let method = obj.get_method(JsSymbol::iterator(), context)?;
 
-    // 3. If method is undefined, then
-    let iterator = if method.is_none() {
-        // a. Let iterator be obj.
-        obj.clone()
-    } else {
+    let iterator = if let Some(method) = method {
         // 4. Else,
-        // a. Let iterator be ? Call(method, obj).
-        method.unwrap().call(obj, &[], context)?
+        //     a. Let iterator be ? Call(method, obj).
+        method.call(obj, &[], context)?
+    } else {
+        // 3. If method is undefined, then
+        //     a. Let iterator be obj.
+        obj.clone()
     };
 
     // 5. If iterator is not an Object, throw a TypeError exception.
