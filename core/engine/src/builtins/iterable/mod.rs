@@ -237,12 +237,12 @@ pub(crate) fn get_iterator_flattenable(
     };
 
     // 5. If iterator is not an Object, throw a TypeError exception.
-    let iterator_obj = iterator
+    let iterator = iterator
         .as_object()
         .ok_or_else(|| JsNativeError::typ().with_message("returned iterator is not an object"))?;
 
     // 6. Return ? GetIteratorDirect(iterator).
-    get_iterator_direct(iterator_obj.clone(), context)
+    get_iterator_direct(iterator, context)
 }
 
 /// `%IteratorPrototype%` object
