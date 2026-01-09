@@ -349,6 +349,8 @@ impl IntrinsicObject for Iterator {
             .method(Self::map, js_string!("map"), 1)
             .method(Self::concat, js_string!("concat"), 0)
             .method(Self::drop, js_string!("drop"), 1)
+            .method(Self::take, js_string!("take"), 1)
+            .method(Self::filter, js_string!("filter"), 1)
             .accessor(
                 JsSymbol::to_string_tag(),
                 Some(get_to_string_tag),
@@ -370,7 +372,7 @@ impl BuiltInObject for Iterator {
 
 impl BuiltInConstructor for Iterator {
     const CONSTRUCTOR_ARGUMENTS: usize = 0;
-    const PROTOTYPE_STORAGE_SLOTS: usize = 11;
+    const PROTOTYPE_STORAGE_SLOTS: usize = 13;
     const CONSTRUCTOR_STORAGE_SLOTS: usize = 1;
 
     const STANDARD_CONSTRUCTOR: fn(&StandardConstructors) -> &StandardConstructor =
@@ -887,6 +889,99 @@ impl Iterator {
         // 9. Return result.
         Ok(result.into())
     }
+
+    /// `Iterator.prototype.take ( limit )`
+    ///
+    /// More information:
+    ///  - [ECMA reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.take
+    fn take(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        // 2. If O is not an Object, throw a TypeError exception.
+        let o_obj = this
+            .as_object()
+            .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?;
+
+        // 3. Let numLimit be ? ToNumber(limit).
+        let limit = args.get_or_undefined(0);
+        let num_limit = limit.to_number(context)?;
+
+        // 4. If numLimit is NaN, throw a RangeError exception.
+        if num_limit.is_nan() {
+            return Err(JsNativeError::range()
+                .with_message("limit must not be NaN")
+                .into());
+        }
+
+        // 5. Let integerLimit be ! ToIntegerOrInfinity(numLimit).
+        let integer_limit = limit.to_integer_or_infinity(context)?;
+
+        // 6. If integerLimit < 0, throw a RangeError exception.
+        match integer_limit {
+            IntegerOrInfinity::Integer(i) if i < 0 => {
+                return Err(JsNativeError::range()
+                    .with_message("limit must be non-negative")
+                    .into());
+            }
+            IntegerOrInfinity::NegativeInfinity => {
+                return Err(JsNativeError::range()
+                    .with_message("limit must be non-negative")
+                    .into());
+            }
+            _ => {}
+        }
+
+        // 7. Let iterated be ? GetIteratorDirect(O).
+        let iterated = get_iterator_direct(o_obj.clone(), context)?;
+
+        // 8. Let result be CreateIteratorFromClosure(closure, "Iterator Helper", %IteratorHelperPrototype%, « [[UnderlyingIterator]] »).
+        let result = IteratorHelper::create(
+            iterated,
+            IteratorHelperKind::Take {
+                remaining: integer_limit,
+            },
+            context,
+        );
+
+        // 9. Return result.
+        Ok(result.into())
+    }
+
+    /// `Iterator.prototype.filter ( predicate )`
+    ///
+    /// More information:
+    ///  - [ECMA reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.filter
+    fn filter(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        // 2. If O is not an Object, throw a TypeError exception.
+        let o_obj = this
+            .as_object()
+            .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?;
+
+        // 3. If IsCallable(predicate) is false, throw a TypeError exception.
+        let predicate = args.get_or_undefined(0);
+        let predicate_fn = predicate
+            .as_callable()
+            .ok_or_else(|| JsNativeError::typ().with_message("predicate is not callable"))?;
+
+        // 4. Let iterated be ? GetIteratorDirect(O).
+        let iterated = get_iterator_direct(o_obj.clone(), context)?;
+
+        // 5. Let result be CreateIteratorFromClosure(closure, "Iterator Helper", %IteratorHelperPrototype%, « [[UnderlyingIterator]] »).
+        let result = IteratorHelper::create(
+            iterated,
+            IteratorHelperKind::Filter {
+                predicate: predicate_fn.clone(),
+            },
+            context,
+        );
+
+        // 6. Return result.
+        Ok(result.into())
+    }
 }
 
 /// The kind of iterator helper.
@@ -904,6 +999,17 @@ enum IteratorHelperKind {
         /// Number of items remaining to skip.
         #[unsafe_ignore_trace]
         remaining: IntegerOrInfinity,
+    },
+    /// Take helper: yields at most `remaining` items.
+    Take {
+        /// Number of items remaining to take.
+        #[unsafe_ignore_trace]
+        remaining: IntegerOrInfinity,
+    },
+    /// Filter helper: filters values based on a predicate.
+    Filter {
+        /// The predicate function.
+        predicate: JsObject,
     },
 }
 
@@ -1140,6 +1246,99 @@ impl IteratorHelperPrototype {
                         IntegerOrInfinity::NegativeInfinity => {
                             unreachable!("drop with negative infinity should have been rejected")
                         }
+                    }
+                }
+            }
+            IteratorHelperKind::Take { ref remaining } => {
+                // Take helper implementation.
+                let remaining = *remaining;
+
+                match remaining {
+                    IntegerOrInfinity::Integer(0) => {
+                        // No more items to take, iterator is done.
+                        Ok(create_iter_result_object(
+                            JsValue::undefined(),
+                            true,
+                            context,
+                        ))
+                    }
+                    IntegerOrInfinity::PositiveInfinity => {
+                        // Take infinity, just pass through all values.
+                        let value = iterator_helper.underlying_iterator().step_value(context)?;
+
+                        if let Some(value) = value {
+                            Ok(create_iter_result_object(value, false, context))
+                        } else {
+                            Ok(create_iter_result_object(
+                                JsValue::undefined(),
+                                true,
+                                context,
+                            ))
+                        }
+                    }
+                    IntegerOrInfinity::Integer(n) => {
+                        // Take one item and decrement.
+                        let value = iterator_helper.underlying_iterator().step_value(context)?;
+
+                        if let Some(value) = value {
+                            // Decrement remaining.
+                            iterator_helper.kind = IteratorHelperKind::Take {
+                                remaining: IntegerOrInfinity::Integer(n - 1),
+                            };
+                            Ok(create_iter_result_object(value, false, context))
+                        } else {
+                            // Underlying iterator exhausted.
+                            Ok(create_iter_result_object(
+                                JsValue::undefined(),
+                                true,
+                                context,
+                            ))
+                        }
+                    }
+                    IntegerOrInfinity::NegativeInfinity => {
+                        unreachable!("take with negative infinity should have been rejected")
+                    }
+                }
+            }
+            IteratorHelperKind::Filter { ref predicate } => {
+                // Filter helper implementation.
+                // Keep trying values until we find one that passes the predicate.
+                loop {
+                    let value = iterator_helper.underlying_iterator().step_value(context)?;
+
+                    if let Some(value) = value {
+                        let counter = iterator_helper.counter;
+                        iterator_helper.counter += 1;
+
+                        // Drop the mutable borrow before calling the predicate.
+                        let predicate = predicate.clone();
+                        drop(iterator_helper);
+
+                        // Call the predicate function.
+                        let selected = predicate.call(
+                            &JsValue::undefined(),
+                            &[value.clone(), counter.into()],
+                            context,
+                        )?;
+
+                        // If the predicate returns truthy, return this value.
+                        if selected.to_boolean() {
+                            return Ok(create_iter_result_object(value, false, context));
+                        }
+
+                        // Otherwise, reacquire the borrow and continue.
+                        iterator_helper =
+                            o_obj.downcast_mut::<IteratorHelper>().ok_or_else(|| {
+                                JsNativeError::typ()
+                                    .with_message("this is not an IteratorHelper object")
+                            })?;
+                    } else {
+                        // Iterator is done.
+                        return Ok(create_iter_result_object(
+                            JsValue::undefined(),
+                            true,
+                            context,
+                        ));
                     }
                 }
             }
