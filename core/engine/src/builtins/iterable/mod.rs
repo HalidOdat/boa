@@ -1,15 +1,15 @@
 //! Boa's implementation of ECMAScript's `IteratorRecord` and iterator prototype objects.
 
 use crate::{
+    Context, JsArgs, JsData, JsResult, JsString, JsValue,
     builtins::{BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
     js_string,
-    object::{internal_methods::get_prototype_from_constructor, JsObject},
+    object::{JsObject, internal_methods::get_prototype_from_constructor},
     realm::Realm,
     string::StaticJsStrings,
     symbol::JsSymbol,
-    Context, JsArgs, JsData, JsResult, JsString, JsValue,
 };
 use boa_gc::{Finalize, Trace};
 
@@ -421,6 +421,7 @@ impl IntrinsicObject for WrapForValidIteratorPrototype {
                     .iterator(),
             )
             .static_method(Self::next, js_string!("next"), 0)
+            .static_method(Self::return_fn, js_string!("return"), 0)
             .build();
     }
 
@@ -462,6 +463,52 @@ impl WrapForValidIteratorPrototype {
             .call(&iterator_record.iterator().clone().into(), &[], context)?;
 
         Ok(result)
+    }
+
+    /// `%WrapForValidIteratorPrototype%.return ( )`
+    ///
+    /// More information:
+    ///  - [ECMA reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-%wrapforvaliditeratorprototype%.return
+    pub(crate) fn return_fn(
+        this: &JsValue,
+        _: &[JsValue],
+        context: &mut Context,
+    ) -> JsResult<JsValue> {
+        // 1. Let O be this value.
+        // 2. Perform ? RequireInternalSlot(O, [[Iterated]]).
+        let o = this
+            .as_object()
+            .ok_or_else(|| JsNativeError::typ().with_message("`this` is not an object"))?;
+
+        let wrap = o.downcast_ref::<WrapForValidIterator>().ok_or_else(|| {
+            JsNativeError::typ().with_message("`this` does not have a [[Iterated]] internal slot")
+        })?;
+
+        // 3. Let iterator be O.[[Iterated]].[[Iterator]].
+        let iterator = wrap.iterated().iterator().clone();
+        drop(wrap);
+
+        // 4. Assert: iterator is an Object.
+        // (guaranteed by the type system)
+
+        // 5. Let returnMethod be ? GetMethod(iterator, "return").
+        let return_method = iterator.get_method(js_string!("return"), context)?;
+
+        // 6. If returnMethod is undefined, then
+        if return_method.is_none() {
+            //     a. Return CreateIterResultObject(undefined, true).
+            return Ok(create_iter_result_object(
+                JsValue::undefined(),
+                true,
+                context,
+            ));
+        }
+
+        // 7. Return ? Call(returnMethod, iterator).
+        let return_method = return_method.expect("return_method is Some");
+        return_method.call(&iterator.into(), &[], context)
     }
 }
 
