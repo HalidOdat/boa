@@ -1,7 +1,7 @@
 //! Boa's implementation of ECMAScript's `IteratorRecord` and iterator prototype objects.
 
 use crate::{
-    Context, JsResult, JsString, JsValue,
+    Context, JsArgs, JsResult, JsString, JsValue,
     builtins::{BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
@@ -257,6 +257,7 @@ impl IntrinsicObject for Iterator {
     fn init(realm: &Realm) {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .method(|v, _, _| Ok(v.clone()), JsSymbol::iterator(), 0)
+            .static_method(Self::from, js_string!("from"), 1)
             .build();
     }
 
@@ -272,7 +273,7 @@ impl BuiltInObject for Iterator {
 impl BuiltInConstructor for Iterator {
     const CONSTRUCTOR_ARGUMENTS: usize = 0;
     const PROTOTYPE_STORAGE_SLOTS: usize = 2;
-    const CONSTRUCTOR_STORAGE_SLOTS: usize = 0;
+    const CONSTRUCTOR_STORAGE_SLOTS: usize = 1;
 
     const STANDARD_CONSTRUCTOR: fn(&StandardConstructors) -> &StandardConstructor =
         StandardConstructors::iterator;
@@ -315,6 +316,43 @@ impl BuiltInConstructor for Iterator {
             JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, ())
                 .into(),
         )
+    }
+}
+
+impl Iterator {
+    /// `Iterator.from ( O )`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.from
+    fn from(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        let o = args.get_or_undefined(0);
+
+        // 2. Let iteratorRecord be ? GetIteratorFlattenable(O, iterate-strings).
+        let iterator_record = get_iterator_flattenable(o, StringHandling::IterateStrings, context)?;
+
+        // 3. Let hasInstance be ? OrdinaryHasInstance(%Iterator%, iteratorRecord.[[Iterator]]).
+        let iterator_constructor = context.intrinsics().constructors().iterator().constructor();
+        let has_instance = JsValue::ordinary_has_instance(
+            &iterator_constructor.into(),
+            &iterator_record.iterator().clone().into(),
+            context,
+        )?;
+
+        // 4. If hasInstance is true, then
+        if has_instance {
+            // a. Return iteratorRecord.[[Iterator]].
+            return Ok(iterator_record.iterator().clone().into());
+        }
+
+        // 5. Let wrapper be OrdinaryObjectCreate(%WrapForValidIteratorPrototype%, « [[Iterated]] »).
+        // 6. Set wrapper.[[Iterated]] to iteratorRecord.
+        // 7. Return wrapper.
+        // TODO: Implement WrapForValidIteratorPrototype for full spec compliance.
+        // For now, we return the iterator directly which works for basic iteration.
+        Ok(iterator_record.iterator().clone().into())
     }
 }
 
