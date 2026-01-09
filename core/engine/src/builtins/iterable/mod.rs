@@ -1,15 +1,17 @@
 //! Boa's implementation of ECMAScript's `IteratorRecord` and iterator prototype objects.
 
 use crate::{
-    Context, JsArgs, JsData, JsResult, JsString, JsValue, NativeFunction,
+    Context, JsArgs, JsData, JsResult, JsString, JsValue,
     builtins::{Array, BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
     js_string,
-    object::{JsFunction, JsObject, internal_methods::get_prototype_from_constructor},
+    object::{JsObject, internal_methods::get_prototype_from_constructor},
+    property::{Attribute, PropertyKey},
     realm::Realm,
     string::StaticJsStrings,
     symbol::JsSymbol,
+    value::IntegerOrInfinity,
 };
 use boa_gc::{Finalize, Trace};
 
@@ -56,7 +58,7 @@ use super::OrdinaryObject;
 pub(crate) fn setter_that_ignores_prototype_properties(
     this: &JsValue,
     home: &JsObject,
-    p: JsString,
+    p: PropertyKey,
     v: JsValue,
     context: &mut Context,
 ) -> JsResult<JsValue> {
@@ -77,8 +79,7 @@ pub(crate) fn setter_that_ignores_prototype_properties(
     }
 
     // 3. Let desc be ? this.[[GetOwnProperty]](p).
-    let key = p.clone().into();
-    let desc = this_obj.borrow().properties().get(&key);
+    let desc = this_obj.borrow().properties().get(&p);
 
     // 4. If desc is undefined, then
     if desc.is_none() {
@@ -127,6 +128,9 @@ pub struct IteratorPrototypes {
     /// The `%WrapForValidIteratorPrototype%` prototype object.
     wrap_for_valid_iterator: JsObject,
 
+    /// The `%IteratorHelperPrototype%` prototype object.
+    iterator_helper: JsObject,
+
     /// The `%SegmentIteratorPrototype%` prototype object.
     #[cfg(feature = "intl")]
     segment: JsObject,
@@ -145,6 +149,7 @@ impl Default for IteratorPrototypes {
             map: JsObject::with_null_proto(),
             for_in: JsObject::with_null_proto(),
             wrap_for_valid_iterator: JsObject::with_null_proto(),
+            iterator_helper: JsObject::with_null_proto(),
             #[cfg(feature = "intl")]
             segment: JsObject::with_null_proto(),
         }
@@ -220,6 +225,13 @@ impl IteratorPrototypes {
     #[must_use]
     pub fn wrap_for_valid_iterator(&self) -> JsObject {
         self.wrap_for_valid_iterator.clone()
+    }
+
+    /// Returns the `%IteratorHelperPrototype%` object.
+    #[inline]
+    #[must_use]
+    pub fn iterator_helper(&self) -> JsObject {
+        self.iterator_helper.clone()
     }
 
     /// Returns the `%SegmentIteratorPrototype%` object.
@@ -319,13 +331,30 @@ pub(crate) struct Iterator;
 
 impl IntrinsicObject for Iterator {
     fn init(realm: &Realm) {
+        let get_to_string_tag = BuiltInBuilder::callable(realm, Self::get_to_string_tag)
+            .name(js_string!("get [Symbol.toStringTag]"))
+            .build();
+
+        let set_to_string_tag = BuiltInBuilder::callable(realm, Self::set_to_string_tag)
+            .name(js_string!("set [Symbol.toStringTag]"))
+            .build();
+
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .method(Self::symbol_iterator, JsSymbol::iterator(), 0)
+            .method(Self::iterator, JsSymbol::iterator(), 0)
             .method(Self::to_array, js_string!("toArray"), 0)
             .method(Self::some, js_string!("some"), 1)
             .method(Self::for_each, js_string!("forEach"), 1)
             .method(Self::find, js_string!("find"), 1)
             .method(Self::every, js_string!("every"), 1)
+            .method(Self::map, js_string!("map"), 1)
+            .method(Self::concat, js_string!("concat"), 0)
+            .method(Self::drop, js_string!("drop"), 1)
+            .accessor(
+                JsSymbol::to_string_tag(),
+                Some(get_to_string_tag),
+                Some(set_to_string_tag),
+                Attribute::CONFIGURABLE,
+            )
             .static_method(Self::from, js_string!("from"), 1)
             .build();
     }
@@ -341,7 +370,7 @@ impl BuiltInObject for Iterator {
 
 impl BuiltInConstructor for Iterator {
     const CONSTRUCTOR_ARGUMENTS: usize = 0;
-    const PROTOTYPE_STORAGE_SLOTS: usize = 6;
+    const PROTOTYPE_STORAGE_SLOTS: usize = 11;
     const CONSTRUCTOR_STORAGE_SLOTS: usize = 1;
 
     const STANDARD_CONSTRUCTOR: fn(&StandardConstructors) -> &StandardConstructor =
@@ -395,9 +424,45 @@ impl Iterator {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype-%symbol.iterator%
-    fn symbol_iterator(this: &JsValue, _: &[JsValue], _context: &mut Context) -> JsResult<JsValue> {
+    fn iterator(this: &JsValue, _: &[JsValue], _context: &mut Context) -> JsResult<JsValue> {
         // 1. Return the this value.
         Ok(this.clone())
+    }
+
+    /// `get Iterator.prototype [ %Symbol.toStringTag% ]`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-get-iterator.prototype-%symbol.tostringtag%
+    fn get_to_string_tag(_: &JsValue, _: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
+        // 1. Return "Iterator".
+        Ok(js_string!("Iterator").into())
+    }
+
+    /// `set Iterator.prototype [ %Symbol.toStringTag% ]`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-set-iterator.prototype-%symbol.tostringtag%
+    fn set_to_string_tag(
+        this: &JsValue,
+        args: &[JsValue],
+        context: &mut Context,
+    ) -> JsResult<JsValue> {
+        // 1. Let v be the first argument.
+        let v = args.get_or_undefined(0).clone();
+        // 2. Perform ? SetterThatIgnoresPrototypeProperties(this, %Iterator.prototype%, %Symbol.toStringTag%, v).
+        let home = context.intrinsics().constructors().iterator().prototype();
+        setter_that_ignores_prototype_properties(
+            this,
+            &home,
+            JsSymbol::to_string_tag().into(),
+            v,
+            context,
+        )
+        // 3. Return undefined.
     }
 
     /// `Iterator.from ( O )`
@@ -676,6 +741,473 @@ impl Iterator {
 
             // f. Set counter to counter + 1.
             counter += 1;
+        }
+    }
+
+    /// `Iterator.prototype.map ( mapper )`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.map
+    fn map(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        let o = this;
+
+        // 2. If O is not an Object, throw a TypeError exception.
+        let o_obj = o
+            .as_object()
+            .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?;
+
+        // 3. If IsCallable(mapper) is false, throw a TypeError exception.
+        let mapper = args
+            .get_or_undefined(0)
+            .as_callable()
+            .ok_or_else(|| JsNativeError::typ().with_message("mapper is not callable"))?;
+
+        // 4. Let iterated be ? GetIteratorDirect(O).
+        let iterated = get_iterator_direct(o_obj, context)?;
+
+        // 5. Let result be CreateIteratorFromClosure(closure, "Iterator Helper", %IteratorHelperPrototype%, « [[UnderlyingIterator]] »).
+        // 6. Set result.[[UnderlyingIterator]] to iterated.
+        let result = IteratorHelper::create(
+            iterated,
+            IteratorHelperKind::Map {
+                mapper: mapper.clone(),
+            },
+            context,
+        );
+
+        // 7. Return result.
+        Ok(result.into())
+    }
+
+    /// `Iterator.prototype.concat ( ...items )`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.concat
+    fn concat(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        let o = this;
+
+        // 2. Let iteratorRecord be ? GetIteratorDirect(O).
+        let o_obj = o
+            .as_object()
+            .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?;
+
+        let iterator_record = get_iterator_direct(o_obj, context)?;
+
+        // 3. Let iterables be a new empty List.
+        let mut iterables = Vec::new();
+        iterables.push(iterator_record);
+
+        // 4. For each element item of items, do
+        for item in args.iter() {
+            // a. If item is an Object, then
+            if item.is_object() {
+                // i. Let iteratorRecord be ? GetIteratorFlattenable(item, reject-strings).
+                let iter_record =
+                    get_iterator_flattenable(item, StringHandling::RejectStrings, context)?;
+                // ii. Append iteratorRecord to iterables.
+                iterables.push(iter_record);
+            } else {
+                // b. Else,
+                // i. Let iteratorRecord be ? GetIteratorFlattenable(item, iterate-strings).
+                let iter_record =
+                    get_iterator_flattenable(item, StringHandling::IterateStrings, context)?;
+                // ii. Append iteratorRecord to iterables.
+                iterables.push(iter_record);
+            }
+        }
+
+        // 5. Let result be CreateIteratorFromClosure(closure, "Iterator Helper", %IteratorHelperPrototype%, « [[UnderlyingIterators]] »).
+        // 6. Set result.[[UnderlyingIterators]] to iterables.
+        let result = IteratorHelper::create_concat(iterables, context);
+
+        // 7. Return result.
+        Ok(result.into())
+    }
+
+    /// `Iterator.prototype.drop ( limit )`
+    ///
+    /// More information:
+    ///  - [ECMA reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.drop
+    fn drop(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        // 2. If O is not an Object, throw a TypeError exception.
+        let o_obj = this
+            .as_object()
+            .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?;
+
+        // 3. Let numLimit be ? ToNumber(limit).
+        let limit = args.get_or_undefined(0);
+        let num_limit = limit.to_number(context)?;
+
+        // 4. If numLimit is NaN, throw a RangeError exception.
+        if num_limit.is_nan() {
+            return Err(JsNativeError::range()
+                .with_message("limit must not be NaN")
+                .into());
+        }
+
+        // 5. Let integerLimit be ! ToIntegerOrInfinity(numLimit).
+        let integer_limit = limit.to_integer_or_infinity(context)?;
+
+        // 6. If integerLimit < 0, throw a RangeError exception.
+        match integer_limit {
+            IntegerOrInfinity::Integer(i) if i < 0 => {
+                return Err(JsNativeError::range()
+                    .with_message("limit must be non-negative")
+                    .into());
+            }
+            IntegerOrInfinity::NegativeInfinity => {
+                return Err(JsNativeError::range()
+                    .with_message("limit must be non-negative")
+                    .into());
+            }
+            _ => {}
+        }
+
+        // 7. Let iterated be ? GetIteratorDirect(O).
+        let iterated = get_iterator_direct(o_obj.clone(), context)?;
+
+        // 8. Let result be CreateIteratorFromClosure(closure, "Iterator Helper", %IteratorHelperPrototype%, « [[UnderlyingIterator]] »).
+        let result = IteratorHelper::create(
+            iterated,
+            IteratorHelperKind::Drop {
+                remaining: integer_limit,
+            },
+            context,
+        );
+
+        // 9. Return result.
+        Ok(result.into())
+    }
+}
+
+/// The kind of iterator helper.
+#[derive(Debug, Clone, Finalize, Trace)]
+enum IteratorHelperKind {
+    /// Map helper: applies a mapper function to each value.
+    Map {
+        /// The mapper function.
+        mapper: JsObject,
+    },
+    /// Concat helper: concatenates multiple iterables.
+    Concat,
+    /// Drop helper: skips the first `remaining` items.
+    Drop {
+        /// Number of items remaining to skip.
+        #[unsafe_ignore_trace]
+        remaining: IntegerOrInfinity,
+    },
+}
+
+/// The `IteratorHelper` object.
+///
+/// This object wraps an iterator and applies helper operations.
+///
+/// More information:
+///  - [ECMA reference][spec]
+///
+/// [spec]: https://tc39.es/ecma262/#sec-iteratorhelperprototype-object
+#[derive(Debug, Clone, Finalize, Trace, JsData)]
+pub(crate) struct IteratorHelper {
+    /// The `[[UnderlyingIterator]]` internal slot.
+    #[unsafe_ignore_trace]
+    underlying_iterator: Option<IteratorRecord>,
+
+    /// The list of iterator records for Concat helper.
+    #[unsafe_ignore_trace]
+    iterables: Vec<IteratorRecord>,
+
+    /// The kind of iterator helper.
+    kind: IteratorHelperKind,
+
+    /// The counter for tracking iterations.
+    counter: u64,
+}
+
+impl IteratorHelper {
+    /// Creates a new `IteratorHelper`.
+    fn create(
+        underlying_iterator: IteratorRecord,
+        kind: IteratorHelperKind,
+        context: &mut Context,
+    ) -> JsObject {
+        let iterator_helper = Self {
+            underlying_iterator: Some(underlying_iterator),
+            iterables: Vec::new(),
+            kind,
+            counter: 0,
+        };
+
+        JsObject::from_proto_and_data_with_shared_shape::<_, IteratorHelper>(
+            context.root_shape(),
+            context
+                .intrinsics()
+                .objects()
+                .iterator_prototypes()
+                .iterator_helper(),
+            iterator_helper,
+        )
+        .upcast()
+    }
+
+    /// Creates a new `IteratorHelper` for Concat with multiple iterables.
+    fn create_concat(iterables: Vec<IteratorRecord>, context: &mut Context) -> JsObject {
+        let iterator_helper = Self {
+            underlying_iterator: None,
+            iterables,
+            kind: IteratorHelperKind::Concat,
+            counter: 0,
+        };
+
+        JsObject::from_proto_and_data_with_shared_shape::<_, IteratorHelper>(
+            context.root_shape(),
+            context
+                .intrinsics()
+                .objects()
+                .iterator_prototypes()
+                .iterator_helper(),
+            iterator_helper,
+        )
+        .upcast()
+    }
+
+    /// Gets the `[[UnderlyingIterator]]` internal slot.
+    fn underlying_iterator(&mut self) -> &mut IteratorRecord {
+        self.underlying_iterator
+            .as_mut()
+            .expect("underlying_iterator is None for Concat helper")
+    }
+}
+
+/// The `%IteratorHelperPrototype%` object.
+///
+/// More information:
+///  - [ECMA reference][spec]
+///
+/// [spec]: https://tc39.es/ecma262/#sec-iteratorhelperprototype-object
+pub(crate) struct IteratorHelperPrototype;
+
+impl IntrinsicObject for IteratorHelperPrototype {
+    fn init(realm: &Realm) {
+        BuiltInBuilder::with_intrinsic::<Self>(realm)
+            .prototype(
+                realm
+                    .intrinsics()
+                    .objects()
+                    .iterator_prototypes()
+                    .iterator(),
+            )
+            .static_method(Self::next, js_string!("next"), 0)
+            .static_method(Self::r#return, js_string!("return"), 0)
+            .build();
+    }
+
+    fn get(intrinsics: &Intrinsics) -> JsObject {
+        intrinsics.objects().iterator_prototypes().iterator_helper()
+    }
+}
+
+impl IteratorHelperPrototype {
+    /// `%IteratorHelperPrototype%.next ( )`
+    ///
+    /// More information:
+    ///  - [ECMA reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-%iteratorhelperprototype%.next
+    fn next(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        // 2. Perform ? RequireInternalSlot(O, [[UnderlyingIterator]]).
+        let o_obj = this
+            .as_object()
+            .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?;
+
+        let mut iterator_helper = o_obj.downcast_mut::<IteratorHelper>().ok_or_else(|| {
+            JsNativeError::typ().with_message("this is not an IteratorHelper object")
+        })?;
+
+        // Process based on the kind of helper.
+        let kind = iterator_helper.kind.clone();
+
+        match kind {
+            IteratorHelperKind::Map { ref mapper } => {
+                // Get next value from underlying iterator.
+                let value = iterator_helper.underlying_iterator().step_value(context)?;
+
+                if let Some(value) = value {
+                    let counter = iterator_helper.counter;
+                    iterator_helper.counter += 1;
+
+                    // Drop the mutable borrow before calling the mapper.
+                    let mapper = mapper.clone();
+                    drop(iterator_helper);
+
+                    // Apply the mapper function.
+                    let mapped =
+                        mapper.call(&JsValue::undefined(), &[value, counter.into()], context)?;
+
+                    // Return the mapped value.
+                    Ok(create_iter_result_object(mapped, false, context))
+                } else {
+                    // Iterator is done.
+                    Ok(create_iter_result_object(
+                        JsValue::undefined(),
+                        true,
+                        context,
+                    ))
+                }
+            }
+            IteratorHelperKind::Concat => {
+                // Concat helper implementation.
+                // Keep trying iterables until we find a value or run out.
+                loop {
+                    if iterator_helper.iterables.is_empty() {
+                        // No more iterables to process.
+                        return Ok(create_iter_result_object(
+                            JsValue::undefined(),
+                            true,
+                            context,
+                        ));
+                    }
+
+                    // Get the current iterable (first in the list).
+                    let value = iterator_helper.iterables[0].step_value(context)?;
+
+                    if let Some(value) = value {
+                        // Found a value, return it.
+                        return Ok(create_iter_result_object(value, false, context));
+                    } else {
+                        // Current iterable is exhausted, move to the next one.
+                        iterator_helper.iterables.remove(0);
+                    }
+                }
+            }
+            IteratorHelperKind::Drop { ref remaining } => {
+                // Drop helper implementation.
+                let mut remaining = *remaining;
+
+                // Skip items while remaining > 0.
+                loop {
+                    match remaining {
+                        IntegerOrInfinity::Integer(0) => {
+                            // Done skipping, return the next value.
+                            let value =
+                                iterator_helper.underlying_iterator().step_value(context)?;
+
+                            return if let Some(value) = value {
+                                Ok(create_iter_result_object(value, false, context))
+                            } else {
+                                Ok(create_iter_result_object(
+                                    JsValue::undefined(),
+                                    true,
+                                    context,
+                                ))
+                            };
+                        }
+                        IntegerOrInfinity::PositiveInfinity => {
+                            // Skip forever, always return done.
+                            return Ok(create_iter_result_object(
+                                JsValue::undefined(),
+                                true,
+                                context,
+                            ));
+                        }
+                        IntegerOrInfinity::Integer(n) => {
+                            // Skip one item and decrement.
+                            let value =
+                                iterator_helper.underlying_iterator().step_value(context)?;
+
+                            if value.is_none() {
+                                // Iterator exhausted before we finished skipping.
+                                return Ok(create_iter_result_object(
+                                    JsValue::undefined(),
+                                    true,
+                                    context,
+                                ));
+                            }
+
+                            // Decrement remaining.
+                            remaining = IntegerOrInfinity::Integer(n - 1);
+                            iterator_helper.kind = IteratorHelperKind::Drop { remaining };
+                        }
+                        IntegerOrInfinity::NegativeInfinity => {
+                            unreachable!("drop with negative infinity should have been rejected")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// `%IteratorHelperPrototype%.return ( )`
+    ///
+    /// More information:
+    ///  - [ECMA reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-%iteratorhelperprototype%.return
+    fn r#return(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        // 2. Perform ? RequireInternalSlot(O, [[UnderlyingIterator]]).
+        let o_obj = this
+            .as_object()
+            .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?;
+
+        let mut iterator_helper = o_obj.downcast_mut::<IteratorHelper>().ok_or_else(|| {
+            JsNativeError::typ().with_message("this is not an IteratorHelper object")
+        })?;
+
+        // Handle different helper kinds.
+        match &iterator_helper.kind {
+            IteratorHelperKind::Concat => {
+                // For Concat, we need to close all remaining iterators.
+                let iterators = std::mem::take(&mut iterator_helper.iterables);
+                drop(iterator_helper);
+
+                for iter_record in iterators {
+                    let iterator = iter_record.iterator();
+                    let return_method = iterator.get_method(js_string!("return"), context)?;
+                    if let Some(return_method) = return_method {
+                        return_method.call(&iterator.clone().into(), &[], context)?;
+                    }
+                }
+
+                Ok(create_iter_result_object(
+                    JsValue::undefined(),
+                    true,
+                    context,
+                ))
+            }
+            _ => {
+                // 3. Let iterator be O.[[UnderlyingIterator]].[[Iterator]].
+                let iterator = iterator_helper.underlying_iterator().iterator().clone();
+                drop(iterator_helper);
+
+                // 4. Assert: iterator is an Object.
+                // 5. Let returnMethod be ? GetMethod(iterator, "return").
+                let return_method = iterator.get_method(js_string!("return"), context)?;
+
+                // 6. If returnMethod is undefined, then
+                if return_method.is_none() {
+                    // a. Return CreateIterResultObject(undefined, true).
+                    return Ok(create_iter_result_object(
+                        JsValue::undefined(),
+                        true,
+                        context,
+                    ));
+                }
+
+                // 7. Return ? Call(returnMethod, iterator).
+                return_method
+                    .unwrap()
+                    .call(&iterator.clone().into(), &[], context)
+            }
         }
     }
 }
