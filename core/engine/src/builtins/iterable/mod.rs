@@ -2,7 +2,7 @@
 
 use crate::{
     Context, JsArgs, JsData, JsResult, JsString, JsValue,
-    builtins::{BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
+    builtins::{Array, BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
     js_string,
@@ -268,6 +268,8 @@ impl IntrinsicObject for Iterator {
     fn init(realm: &Realm) {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .method(|v, _, _| Ok(v.clone()), JsSymbol::iterator(), 0)
+            .method(Self::to_array, js_string!("toArray"), 0)
+            .method(Self::some, js_string!("some"), 1)
             .static_method(Self::from, js_string!("from"), 1)
             .build();
     }
@@ -283,7 +285,7 @@ impl BuiltInObject for Iterator {
 
 impl BuiltInConstructor for Iterator {
     const CONSTRUCTOR_ARGUMENTS: usize = 0;
-    const PROTOTYPE_STORAGE_SLOTS: usize = 2;
+    const PROTOTYPE_STORAGE_SLOTS: usize = 3;
     const CONSTRUCTOR_STORAGE_SLOTS: usize = 1;
 
     const STANDARD_CONSTRUCTOR: fn(&StandardConstructors) -> &StandardConstructor =
@@ -372,6 +374,84 @@ impl Iterator {
             WrapForValidIterator::new(iterator_record),
         );
         Ok(wrapper.into())
+    }
+
+    /// `Iterator.prototype.toArray ( )`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.toarray
+    fn to_array(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        let o = this;
+
+        // 2. Let iteratorRecord be ? GetIteratorDirect(O).
+        let iterator_record = get_iterator_direct(
+            o.as_object()
+                .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?,
+            context,
+        )?;
+
+        // 3. Let list be ? IteratorToList(iteratorRecord).
+        let list = iterator_record.into_list(context)?;
+
+        // 4. Return CreateArrayFromList(list).
+        Ok(Array::create_array_from_list(list.into_iter(), context).into())
+    }
+
+    /// `Iterator.prototype.some ( predicate )`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.some
+    fn some(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        let o = this;
+
+        // 2. Let iteratorRecord be ? GetIteratorDirect(O).
+        let mut iterator_record = get_iterator_direct(
+            o.as_object()
+                .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?,
+            context,
+        )?;
+
+        // 3. If IsCallable(predicate) is false, throw a TypeError exception.
+        let predicate = args.get_or_undefined(0);
+        let predicate_fn = predicate
+            .as_callable()
+            .ok_or_else(|| JsNativeError::typ().with_message("predicate is not callable"))?;
+
+        // 4. Let counter be 0.
+        let mut counter = 0u64;
+
+        // 5. Repeat,
+        loop {
+            // a. Let value be ? IteratorStepValue(iteratorRecord).
+            let value = iterator_record.step_value(context);
+
+            // b. If value is done, return false.
+            let value = if_abrupt_close_iterator!(value, iterator_record, context);
+            let Some(value) = value else {
+                return Ok(false.into());
+            };
+
+            // c. Let result be Completion(Call(predicate, undefined, « value, 𝔽(counter) »)).
+            let result =
+                predicate_fn.call(&JsValue::undefined(), &[value, counter.into()], context);
+
+            // d. IfAbruptCloseIterator(result, iteratorRecord).
+            let result = if_abrupt_close_iterator!(result, iterator_record, context);
+
+            // e. If ToBoolean(result) is true, return ? IteratorClose(iteratorRecord, NormalCompletion(true)).
+            if result.to_boolean() {
+                return iterator_record.close(Ok(true.into()), context);
+            }
+
+            // f. Set counter to counter + 1.
+            counter += 1;
+        }
     }
 }
 
