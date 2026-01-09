@@ -270,6 +270,9 @@ impl IntrinsicObject for Iterator {
             .method(|v, _, _| Ok(v.clone()), JsSymbol::iterator(), 0)
             .method(Self::to_array, js_string!("toArray"), 0)
             .method(Self::some, js_string!("some"), 1)
+            .method(Self::for_each, js_string!("forEach"), 1)
+            .method(Self::find, js_string!("find"), 1)
+            .method(Self::every, js_string!("every"), 1)
             .static_method(Self::from, js_string!("from"), 1)
             .build();
     }
@@ -285,7 +288,7 @@ impl BuiltInObject for Iterator {
 
 impl BuiltInConstructor for Iterator {
     const CONSTRUCTOR_ARGUMENTS: usize = 0;
-    const PROTOTYPE_STORAGE_SLOTS: usize = 3;
+    const PROTOTYPE_STORAGE_SLOTS: usize = 6;
     const CONSTRUCTOR_STORAGE_SLOTS: usize = 1;
 
     const STANDARD_CONSTRUCTOR: fn(&StandardConstructors) -> &StandardConstructor =
@@ -418,8 +421,8 @@ impl Iterator {
         )?;
 
         // 3. If IsCallable(predicate) is false, throw a TypeError exception.
-        let predicate = args.get_or_undefined(0);
-        let predicate_fn = predicate
+        let predicate = args
+            .get_or_undefined(0)
             .as_callable()
             .ok_or_else(|| JsNativeError::typ().with_message("predicate is not callable"))?;
 
@@ -438,8 +441,7 @@ impl Iterator {
             };
 
             // c. Let result be Completion(Call(predicate, undefined, « value, 𝔽(counter) »)).
-            let result =
-                predicate_fn.call(&JsValue::undefined(), &[value, counter.into()], context);
+            let result = predicate.call(&JsValue::undefined(), &[value, counter.into()], context);
 
             // d. IfAbruptCloseIterator(result, iteratorRecord).
             let result = if_abrupt_close_iterator!(result, iterator_record, context);
@@ -447,6 +449,165 @@ impl Iterator {
             // e. If ToBoolean(result) is true, return ? IteratorClose(iteratorRecord, NormalCompletion(true)).
             if result.to_boolean() {
                 return iterator_record.close(Ok(true.into()), context);
+            }
+
+            // f. Set counter to counter + 1.
+            counter += 1;
+        }
+    }
+
+    /// `Iterator.prototype.forEach ( procedure )`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.foreach
+    fn for_each(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        let o = this;
+
+        // 2. Let iteratorRecord be ? GetIteratorDirect(O).
+        let mut iterator_record = get_iterator_direct(
+            o.as_object()
+                .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?,
+            context,
+        )?;
+
+        // 3. If IsCallable(procedure) is false, throw a TypeError exception.
+        let procedure = args.get_or_undefined(0);
+        let procedure_fn = procedure
+            .as_callable()
+            .ok_or_else(|| JsNativeError::typ().with_message("procedure is not callable"))?;
+
+        // 4. Let counter be 0.
+        let mut counter = 0u64;
+
+        // 5. Repeat,
+        loop {
+            // a. Let value be ? IteratorStepValue(iteratorRecord).
+            let value = iterator_record.step_value(context);
+
+            // b. If value is done, return undefined.
+            let value = if_abrupt_close_iterator!(value, iterator_record, context);
+            let Some(value) = value else {
+                return Ok(JsValue::undefined());
+            };
+
+            // c. Let result be Completion(Call(procedure, undefined, « value, 𝔽(counter) »)).
+            let result =
+                procedure_fn.call(&JsValue::undefined(), &[value, counter.into()], context);
+
+            // d. IfAbruptCloseIterator(result, iteratorRecord).
+            let _result = if_abrupt_close_iterator!(result, iterator_record, context);
+
+            // e. Set counter to counter + 1.
+            counter += 1;
+        }
+    }
+
+    /// `Iterator.prototype.find ( predicate )`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.find
+    fn find(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        let o = this;
+
+        // 2. Let iteratorRecord be ? GetIteratorDirect(O).
+        let mut iterator_record = get_iterator_direct(
+            o.as_object()
+                .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?,
+            context,
+        )?;
+
+        // 3. If IsCallable(predicate) is false, throw a TypeError exception.
+        let predicate = args
+            .get_or_undefined(0)
+            .as_callable()
+            .ok_or_else(|| JsNativeError::typ().with_message("predicate is not callable"))?;
+
+        // 4. Let counter be 0.
+        let mut counter = 0u64;
+
+        // 5. Repeat,
+        loop {
+            // a. Let value be ? IteratorStepValue(iteratorRecord).
+            let value = iterator_record.step_value(context);
+
+            // b. If value is done, return undefined.
+            let value = if_abrupt_close_iterator!(value, iterator_record, context);
+            let Some(value) = value else {
+                return Ok(JsValue::undefined());
+            };
+
+            // c. Let result be Completion(Call(predicate, undefined, « value, 𝔽(counter) »)).
+            let result = predicate.call(
+                &JsValue::undefined(),
+                &[value.clone(), counter.into()],
+                context,
+            );
+
+            // d. IfAbruptCloseIterator(result, iteratorRecord).
+            let result = if_abrupt_close_iterator!(result, iterator_record, context);
+
+            // e. If ToBoolean(result) is true, return ? IteratorClose(iteratorRecord, NormalCompletion(value)).
+            if result.to_boolean() {
+                return iterator_record.close(Ok(value), context);
+            }
+
+            // f. Set counter to counter + 1.
+            counter += 1;
+        }
+    }
+
+    /// `Iterator.prototype.every ( predicate )`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.every
+    fn every(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        // 1. Let O be the this value.
+        let o = this;
+
+        // 2. Let iteratorRecord be ? GetIteratorDirect(O).
+        let mut iterator_record = get_iterator_direct(
+            o.as_object()
+                .ok_or_else(|| JsNativeError::typ().with_message("this is not an object"))?,
+            context,
+        )?;
+
+        // 3. If IsCallable(predicate) is false, throw a TypeError exception.
+        let predicate = args
+            .get_or_undefined(0)
+            .as_callable()
+            .ok_or_else(|| JsNativeError::typ().with_message("predicate is not callable"))?;
+
+        // 4. Let counter be 0.
+        let mut counter = 0u64;
+
+        // 5. Repeat,
+        loop {
+            // a. Let value be ? IteratorStepValue(iteratorRecord).
+            let value = iterator_record.step_value(context);
+
+            // b. If value is done, return true.
+            let value = if_abrupt_close_iterator!(value, iterator_record, context);
+            let Some(value) = value else {
+                return Ok(true.into());
+            };
+
+            // c. Let result be Completion(Call(predicate, undefined, « value, 𝔽(counter) »)).
+            let result = predicate.call(&JsValue::undefined(), &[value, counter.into()], context);
+
+            // d. IfAbruptCloseIterator(result, iteratorRecord).
+            let result = if_abrupt_close_iterator!(result, iterator_record, context);
+
+            // e. If ToBoolean(result) is false, return ? IteratorClose(iteratorRecord, NormalCompletion(false)).
+            if !result.to_boolean() {
+                return iterator_record.close(Ok(false.into()), context);
             }
 
             // f. Set counter to counter + 1.
