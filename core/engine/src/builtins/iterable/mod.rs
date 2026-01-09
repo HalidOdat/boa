@@ -1,13 +1,14 @@
 //! Boa's implementation of ECMAScript's `IteratorRecord` and iterator prototype objects.
 
 use crate::{
-    Context, JsResult, JsValue,
-    builtins::{BuiltInBuilder, IntrinsicObject},
-    context::intrinsics::Intrinsics,
+    Context, JsResult, JsString, JsValue,
+    builtins::{BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
+    context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
     js_string,
-    object::JsObject,
+    object::{JsObject, internal_methods::get_prototype_from_constructor},
     realm::Realm,
+    string::StaticJsStrings,
     symbol::JsSymbol,
 };
 use boa_gc::{Finalize, Trace};
@@ -166,23 +167,97 @@ impl IteratorPrototypes {
     }
 }
 
+/// `GetIteratorDirect ( obj )`
+///
+/// The abstract operation `GetIteratorDirect` takes argument `obj` (an Object) and returns
+/// either a normal completion containing an Iterator Record or a throw completion.
+///
+/// More information:
+///  - [ECMA reference][spec]
+///
+/// [spec]: https://tc39.es/ecma262/#sec-getiteratordirect
+pub(crate) fn get_iterator_direct(
+    obj: JsObject,
+    context: &mut Context,
+) -> JsResult<IteratorRecord> {
+    // 1. Let nextMethod be ? Get(obj, "next").
+    let next_method = obj.get(js_string!("next"), context)?;
+
+    // 2. Let iteratorRecord be the Iterator Record { [[Iterator]]: obj, [[NextMethod]]: nextMethod, [[Done]]: false }.
+    // 3. Return iteratorRecord.
+    Ok(IteratorRecord::new(obj, next_method))
+}
+
 /// `%IteratorPrototype%` object
 ///
 /// More information:
 ///  - [ECMA reference][spec]
 ///
-/// [spec]: https://tc39.es/ecma262/#sec-%iteratorprototype%-object
+/// [spec]: https://tc39.es/ecma262/#sec-iterator-constructor
 pub(crate) struct Iterator;
 
 impl IntrinsicObject for Iterator {
     fn init(realm: &Realm) {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .static_method(|v, _, _| Ok(v.clone()), JsSymbol::iterator(), 0)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+            .method(|v, _, _| Ok(v.clone()), JsSymbol::iterator(), 0)
             .build();
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().iterator_prototypes().iterator()
+        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    }
+}
+
+impl BuiltInObject for Iterator {
+    const NAME: JsString = StaticJsStrings::ITERATOR;
+}
+
+impl BuiltInConstructor for Iterator {
+    const CONSTRUCTOR_ARGUMENTS: usize = 0;
+    const PROTOTYPE_STORAGE_SLOTS: usize = 2;
+    const CONSTRUCTOR_STORAGE_SLOTS: usize = 0;
+
+    const STANDARD_CONSTRUCTOR: fn(&StandardConstructors) -> &StandardConstructor =
+        StandardConstructors::iterator;
+
+    /// `Iterator ( )`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator
+    fn constructor(
+        new_target: &JsValue,
+        _args: &[JsValue],
+        context: &mut Context,
+    ) -> JsResult<JsValue> {
+        // 1. If NewTarget is undefined or the active function object, throw a TypeError exception.
+
+        if new_target.is_undefined() {
+            return Err(JsNativeError::typ()
+                .with_message("Iterator constructor cannot be called without `new`")
+                .into());
+        }
+
+        // Check if NewTarget is the active function object (Iterator constructor itself)
+        if let (Some(new_target_obj), Some(active_fn)) =
+            (new_target.as_object(), context.active_function_object())
+        {
+            if JsObject::equals(&new_target_obj, &active_fn) {
+                return Err(JsNativeError::typ()
+                    .with_message("Abstract class Iterator not directly constructable")
+                    .into());
+            }
+        }
+
+        // 2. Return ? OrdinaryCreateFromConstructor(NewTarget, "%Iterator.prototype%").
+        let prototype =
+            get_prototype_from_constructor(new_target, StandardConstructors::iterator, context)?;
+
+        Ok(
+            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, ())
+                .into(),
+        )
     }
 }
 

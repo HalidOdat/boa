@@ -40,12 +40,13 @@ impl Intrinsics {
     ///
     /// [`Realm::initialize`]: crate::realm::Realm::initialize
     pub(crate) fn uninit(root_shape: &RootShape) -> Option<Self> {
-        let constructors = StandardConstructors::default();
+        let objects = IntrinsicObjects::uninit()?;
+        let constructors = StandardConstructors::new(&objects);
         let templates = ObjectTemplates::new(root_shape, &constructors);
 
         Some(Self {
             constructors,
-            objects: IntrinsicObjects::uninit()?,
+            objects,
             templates,
         })
     }
@@ -139,6 +140,7 @@ pub struct StandardConstructors {
     regexp: StandardConstructor,
     symbol: StandardConstructor,
     error: StandardConstructor,
+    iterator: StandardConstructor,
     type_error: StandardConstructor,
     reference_error: StandardConstructor,
     range_error: StandardConstructor,
@@ -204,8 +206,9 @@ pub struct StandardConstructors {
     calendar: StandardConstructor,
 }
 
-impl Default for StandardConstructors {
-    fn default() -> Self {
+impl StandardConstructors {
+    /// Create new standard constructors with the given intrinsic objects.
+    pub(crate) fn new(objects: &IntrinsicObjects) -> Self {
         Self {
             object: StandardConstructor::with_prototype(JsObject::from_object_and_vtable(
                 Object::<OrdinaryObject>::default(),
@@ -233,6 +236,7 @@ impl Default for StandardConstructors {
             regexp: StandardConstructor::default(),
             symbol: StandardConstructor::default(),
             error: StandardConstructor::default(),
+            iterator: StandardConstructor::with_prototype(objects.iterator_prototypes().iterator()),
             type_error: StandardConstructor::default(),
             reference_error: StandardConstructor::default(),
             range_error: StandardConstructor::default(),
@@ -479,6 +483,18 @@ impl StandardConstructors {
     #[must_use]
     pub const fn error(&self) -> &StandardConstructor {
         &self.error
+    }
+
+    /// Returns the `Iterator` constructor.
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator-constructor
+    #[inline]
+    #[must_use]
+    pub const fn iterator(&self) -> &StandardConstructor {
+        &self.iterator
     }
 
     /// Returns the `ReferenceError` constructor.
