@@ -1,12 +1,12 @@
 //! Boa's implementation of ECMAScript's `IteratorRecord` and iterator prototype objects.
 
 use crate::{
-    Context, JsArgs, JsData, JsResult, JsString, JsValue,
+    Context, JsArgs, JsData, JsResult, JsString, JsValue, NativeFunction,
     builtins::{Array, BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
     js_string,
-    object::{JsObject, internal_methods::get_prototype_from_constructor},
+    object::{JsFunction, JsObject, internal_methods::get_prototype_from_constructor},
     realm::Realm,
     string::StaticJsStrings,
     symbol::JsSymbol,
@@ -40,6 +40,59 @@ macro_rules! if_abrupt_close_iterator {
 pub(crate) use if_abrupt_close_iterator;
 
 use super::OrdinaryObject;
+
+/// `SetterThatIgnoresPrototypeProperties ( home, property )`
+///
+/// The abstract operation `SetterThatIgnoresPrototypeProperties` takes arguments
+/// `home` (an Object) and `property` (a property key) and returns a function object.
+/// It creates a setter function that only sets properties on own objects, ignoring
+/// prototype properties.
+///
+/// More information:
+///  - [ECMA reference][spec]
+///
+/// [spec]: https://tc39.es/ecma262/#sec-setterthatignoresprototypeproperties
+#[allow(dead_code)]
+pub(crate) fn setter_that_ignores_prototype_properties(
+    this: &JsValue,
+    home: &JsObject,
+    p: JsString,
+    v: JsValue,
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    // 1. If this is not an Object, then
+    let this_obj = this.as_object().ok_or_else(|| {
+        // a. Throw a TypeError exception.
+        JsNativeError::typ().with_message("this is not an object")
+    })?;
+
+    // 2. If this is home, then
+    if JsObject::equals(&this_obj, home) {
+        // a. NOTE: Throwing here emulates assignment to a non-writable data property on the home object
+        //    in strict mode code.
+        // b. Throw a TypeError exception.
+        return Err(JsNativeError::typ()
+            .with_message("Cannot set property on home object")
+            .into());
+    }
+
+    // 3. Let desc be ? this.[[GetOwnProperty]](p).
+    let key = p.clone().into();
+    let desc = this_obj.borrow().properties().get(&key);
+
+    // 4. If desc is undefined, then
+    if desc.is_none() {
+        // a. Perform ? CreateDataPropertyOrThrow(this, p, v).
+        this_obj.create_data_property_or_throw(p, v, context)?;
+    } else {
+        // 5. Else,
+        // a. Perform ? Set(this, p, v, true).
+        this_obj.set(p, v, true, context)?;
+    }
+
+    // 6. Return unused.
+    Ok(JsValue::undefined())
+}
 
 /// The built-in iterator prototypes.
 #[derive(Debug, Trace, Finalize)]
