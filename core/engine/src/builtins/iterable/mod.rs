@@ -267,7 +267,7 @@ pub(crate) struct Iterator;
 impl IntrinsicObject for Iterator {
     fn init(realm: &Realm) {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .method(|v, _, _| Ok(v.clone()), JsSymbol::iterator(), 0)
+            .method(Self::symbol_iterator, JsSymbol::iterator(), 0)
             .method(Self::to_array, js_string!("toArray"), 0)
             .method(Self::some, js_string!("some"), 1)
             .method(Self::for_each, js_string!("forEach"), 1)
@@ -336,6 +336,17 @@ impl BuiltInConstructor for Iterator {
 }
 
 impl Iterator {
+    /// `Iterator.prototype [ %Symbol.iterator% ] ( )`
+    ///
+    /// More information:
+    ///  - [ECMAScript reference][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype-%symbol.iterator%
+    fn symbol_iterator(this: &JsValue, _: &[JsValue], _context: &mut Context) -> JsResult<JsValue> {
+        // 1. Return the this value.
+        Ok(this.clone())
+    }
+
     /// `Iterator.from ( O )`
     ///
     /// More information:
