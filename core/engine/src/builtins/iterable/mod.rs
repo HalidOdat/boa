@@ -188,6 +188,63 @@ pub(crate) fn get_iterator_direct(
     Ok(IteratorRecord::new(obj, next_method))
 }
 
+/// String handling mode for `GetIteratorFlattenable`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StringHandling {
+    /// Iterate over strings.
+    IterateStrings,
+
+    /// Reject strings.
+    RejectStrings,
+}
+
+/// `GetIteratorFlattenable ( obj, stringHandling )`
+///
+/// The abstract operation `GetIteratorFlattenable` takes arguments `obj` (an ECMAScript language value)
+/// and `stringHandling` (iterate-strings or reject-strings) and returns either a normal completion
+/// containing an Iterator Record or a throw completion.
+///
+/// More information:
+///  - [ECMA reference][spec]
+///
+/// [spec]: https://tc39.es/ecma262/#sec-getiteratorflattenable
+pub(crate) fn get_iterator_flattenable(
+    obj: &JsValue,
+    string_handling: StringHandling,
+    context: &mut Context,
+) -> JsResult<IteratorRecord> {
+    // 1. If obj is not an Object, then
+    if !obj.is_object() {
+        // a. If stringHandling is reject-strings or obj is not a String, throw a TypeError exception.
+        if string_handling == StringHandling::RejectStrings || !obj.is_string() {
+            return Err(JsNativeError::typ()
+                .with_message("value is not an object or string")
+                .into());
+        }
+    }
+
+    // 2. Let method be ? GetMethod(obj, @@iterator).
+    let method = obj.get_method(JsSymbol::iterator(), context)?;
+
+    // 3. If method is undefined, then
+    let iterator = if method.is_none() {
+        // a. Let iterator be obj.
+        obj.clone()
+    } else {
+        // 4. Else,
+        // a. Let iterator be ? Call(method, obj).
+        method.unwrap().call(obj, &[], context)?
+    };
+
+    // 5. If iterator is not an Object, throw a TypeError exception.
+    let iterator_obj = iterator
+        .as_object()
+        .ok_or_else(|| JsNativeError::typ().with_message("returned iterator is not an object"))?;
+
+    // 6. Return ? GetIteratorDirect(iterator).
+    get_iterator_direct(iterator_obj.clone(), context)
+}
+
 /// `%IteratorPrototype%` object
 ///
 /// More information:
